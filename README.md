@@ -1,4 +1,4 @@
-# STL Quick Map Notes v0.1.4
+# STL Quick Map Notes v0.1.5
 
 **Foundry VTT:** v14 (system independent; intended for the St. Louis M20/V20 world)  
 **Module ID:** `stl-quick-map-notes`  
@@ -11,7 +11,7 @@
 `https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json`
 
 **Source:** https://github.com/rebsiot/quick-map-notes  
-**Release:** https://github.com/rebsiot/quick-map-notes/releases/tag/v0.1.4
+**Release:** https://github.com/rebsiot/quick-map-notes/releases/tag/v0.1.5
 
 1. Back up your **world**, especially Scenes, Notes, Journals, and ownership settings. When manually replacing files, also preserve persistent uploaded image storage.
 2. In Foundry Setup → **Add-on Modules**, choose **Update Modules** (if already installed), or **Install Module** and paste the manifest URL.
@@ -21,33 +21,34 @@
 
 **Manual ZIP installation:** Stop Foundry, extract the complete `stl-quick-map-notes` folder to `Z:\Data\modules\stl-quick-map-notes` (so `module.json` is immediately inside), restart, enable the module and reload. Do **not** delete existing world data or the module's persistent storage.
 
-## Player workflow — v0.1.4
+## Player workflow — v0.1.5
 
-Players have **Quick Map Note** in **Token Controls**, just like the GM. Their dialog uses one selection:
+Players have **Quick Map Note** in Token Controls (person icon), just like the GM. They choose **Personal** (only author + GM) or **Shared with Party** (everyone reads; only author + GM edit).
 
-| Save in Party Map Notes | Who sees the Journal and map pin? | Who can edit the Journal? |
-| --- | --- | --- |
-| **Personal** (default) | Only the note's creator and GM | Creator and GM |
-| **Shared with Party** | All players and GM | Creator and GM; other players can read |
-
-Each player note creates **one native world Journal Entry with one text Page** plus **one native Scene Note**. Players may edit their own entries later from the Journal sidebar. Other players can read shared entries, but cannot edit the author's entry. The GM can edit/delete any player-created Journal or map pin through normal Foundry tools. Deleting a pin does not delete its Journal.
-
-On the **first player note**, the active GM client creates the folder structure automatically:
+**New player map notes use one Journal Entry per Scene.** The Journal is named after the **Scene/map** and placed directly in the existing or lazily created `Party Map Notes` Journal folder. Every placed note becomes a separate **JournalEntryPage** in that map's Journal. Each map pin links to the specific page with its `pageId`, rather than opening a pile of one-note Journals.
 
 ```text
 Party Map Notes/
-├── Personal/
-│   ├── Alice's private notes (visible to Alice and GM only)
-│   └── Bob's private notes (visible to Bob and GM only)
-└── Shared with Party/
-    └── Party-visible notes (all players can read)
+  Maryland Heights/            <-- one native Journal for this Scene
+    Old Warehouse              <-- private Page (Alice + GM)
+    Meeting Location           <-- shared Page (party reads; Bob + GM edit)
+    Investigation Leads        <-- private Page (Bob + GM)
+  Downtown Street Map/
+    Potential Escape Route     <-- shared Page
 ```
 
-Folders are reused for subsequent notes; there is no bulk import or reorganization of existing Journals. Folder name **Party Map Notes** is reused if a matching root-level Journal folder already exists. Entries are protected by their native individual Journal ownership, not a secondary permission database.
+| Where note is saved | Journal Entry | Page permission | Pin visibility |
+| --- | --- | --- | --- |
+| Personal | Map Journal: default `OBSERVER` (2) | `default: NONE (0)`, author `OWNER (3)` | Expected: author + GM only |
+| Shared with Party | Same map Journal: `OBSERVER` | `default: OBSERVER (2)`, author `OWNER (3)` | Expected: all players with map visibility |
 
-**A GM must be connected.** Player requests go privately to the active GM via Foundry's native `User.query` API. The GM verifies the player's identity with a challenge addressed to that player's live client, validates the viewed Scene, contents, icon and selected section, and then creates the native documents. Players are never granted Scene or world Journal creation permission. Their form does not offer GM Journals or arbitrary existing-Journal links. The GM has no approval popup for normal note creation.
+**Permissions live on the native Page, not the parent Journal.** The parent must be observable to all players so each can see authorized pages; ownership of the Journal itself is not granted to players. Page permissions give the author edit access to that page, while preventing other players from seeing personal pages or editing another author's shared page. The GM retains full access. If the Journal's ownership is edited to grant a player OWNER or made less than OBSERVER, the module stops appending new pages until a GM reviews it, rather than silently overriding permissions.
 
-For player-uploaded icons, the file is transmitted only to the GM and limited to PNG/JPEG/WebP/GIF of **512 KB**. GM uploads remain limited to **5 MB**. The request and file are validated before write. Player creation depends on an active GM client and must be tested with real accounts before campaign use.
+**Existing world documents are not reorganized.** Notes and Journals created by v0.1.4 remain in `Party Map Notes/Personal` and `Party Map Notes/Shared with Party` with their existing IDs, links and access. The old subfolders remain in place; this version creates **new notes** directly in per-Scene Journals under the root. Existing GM Journals with the same map name are never reused or modified: reuse requires the module's `playerMapJournal` and `playerMapSceneId` flags and correct root folder.
+
+**An active GM must be online.** Player requests are sent privately to the active GM via Foundry `User.query`, and the GM challenge-verifies the author and validates the viewed Scene, content, and scope before writing. No player is granted general world Journal or Scene creation privileges, and no GM approval popup is needed. Uploads keep v0.1.4's maximums: 512 KB for player raster icons, 5 MB for GM uploads.
+
+**Live verification required:** Confirm the parent Journal shows only the pages a player may read, that personal page titles and linked map pins are invisible to other players, and that the author can edit their own page without being an OWNER of the parent Journal. Automated tests cannot prove Foundry's permission enforcement or browser behavior. If either privacy check fails, revert to v0.1.4 and restore world data from your backup before creating sensitive content.
 
 ## GM workflow
 
@@ -66,13 +67,13 @@ GM-created notes are not automatically filed under **Party Map Notes**. Only pla
 
 ## Data safety, rollback, known limitations
 
-- Creates only native Scene Notes, Journal Entries, Journal Pages and **player-note folders**; preserves original Scene Library packs, world Scenes, imported Journals and existing pin IDs.
-- **No migration** or mass permission changes. First player note creates its target folder and new documents; disabling the module does not remove them.
-- Back up world data before upgrading. To roll back program code, restore the previous module ZIP or revert the module to v0.1.3. To reverse *world data changes*, use a matching world backup; downgrading code does not delete notes/folders created by v0.1.4.
+- Creates only native Scene Notes, Journal Entries, Journal Pages and the top-level **Party Map Notes** folder for player notes; preserves original Scene Library packs, world Scenes, imported Journals and existing pin IDs.
+- **No migration** or mass permission changes. Existing personal/shared folders and their entries remain where they are. New player notes use one flagged Journal per Scene and one Page per note. Disabling the module does not remove them.
+- Back up world data before upgrading. To roll back program code, restore the previous module ZIP or revert to v0.1.4. To reverse *world data changes*, restore the matching world snapshot: downgrading code does not undo Journal/Page creations.
 - Preserve `storage/` in the module's persistent storage on manual upgrade/remove. Existing Notes may reference these uploaded images.
 - New text is escaped plain text in native HTML Journal Pages; rich editing is available afterward in the Journal sheet.
-- Player edits or deletes of Journal documents are governed by native Foundry permissions. **Only GMs** can delete world Journal Entries, but owners may modify their own note's content.
-- **Unverified live:** Foundry's v14 token control hook placement, `User.query` round-trip, native permission inheritance inside nested folders, and remote image loading. These need real GM + at least two player clients.
+- Player page edits are governed by native Foundry permissions. The author has OWNER of their Page, not the parent Journal. GM can delete/edit Notes and Pages; deleting a pin does not automatically delete its Page or Journal.
+- **Unverified live:** Foundry v14 multi-client per-Page privacy/visibility and editing, map pin visibility for private pages, `User.query` round-trip, and remote image loading. These need real GM + at least two player clients.
 
 ## Developer checks / releases
 

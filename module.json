@@ -1,8 +1,8 @@
 {
   "id": "stl-quick-map-notes",
   "title": "STL Quick Map Notes",
-  "description": "Create native GM, personal, and party-shared map pins with Journal folders, icon uploads, and tint.",
-  "version": "0.1.4",
+  "description": "Create native GM and player map notes with one Scene Journal per map, page-level Personal/Party permissions, icons, uploads and tint.",
+  "version": "0.1.5",
   "compatibility": {
     "minimum": "14",
     "verified": "14",
@@ -24,5 +24,5 @@
   "persistentStorage": true,
   "url": "https://github.com/rebsiot/quick-map-notes",
   "manifest": "https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json",
-  "download": "https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/dist/stl-quick-map-notes-v0.1.4.zip"
+  "download": "https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/dist/stl-quick-map-notes-v0.1.5.zip"
 }

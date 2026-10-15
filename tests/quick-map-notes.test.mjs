@@ -15,11 +15,13 @@ const journalMap = new Map();
 const settings = new Map();
 let createCalls = 0;
 let lastJournalData = null;
+let lastPageData = null;
+let createdPages = 0;
 let issuedNote = null;
 let noteShouldFail = false;
 let uploadCalls = [];
 const scene = {
-  id: 'scene-123',
+  id: 'scene-123', name: 'Maryland Heights',
   async createEmbeddedDocuments(kind,data) {
     assert.equal(kind,'Note');
     if(noteShouldFail) throw Error('Scene rejected note');
@@ -61,7 +63,15 @@ globalThis.JournalEntry={
   async create(data){
     createCalls++;lastJournalData=data;
     const id=`newjournal${createCalls}`;
-    const j={id, name:data.name,folder:data.folder,pages:[{id:`newpage${createCalls}`}],ownership:data.ownership,flags:data.flags};
+    const j={id,name:data.name,folder:data.folder,ownership:data.ownership,flags:data.flags,
+      pages:(data.pages??[]).map((p,i)=>({id:`newpage${createCalls}-${i}`,...p})),
+      async createEmbeddedDocuments(kind,pageData) {
+        assert.equal(kind,'JournalEntryPage');
+        const pages=pageData.map(data=>({id:`added-page${++createdPages}`,...data}));
+        lastPageData=pageData[0];
+        this.pages.push(...pages);
+        return pages;
+      }};
     journalMap.set(id,j);
     return j;
   }
@@ -69,7 +79,7 @@ globalThis.JournalEntry={
 globalThis.ui={notifications:{info(){},error(){},warn(){}}};
 globalThis.canvas={scene,ready:true,dimensions:{sceneRect:{x:0,y:0,width:500,height:500}}};
 
-const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder} = await import('../scripts/main.mjs');
+const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal} = await import('../scripts/main.mjs');
 
 const baseForm = ()=>({
   title:'Old Warehouse',description:'Possible <danger> & clues',
@@ -442,6 +452,9 @@ globalThis.Folder={async create(data){
 }};
 function usePlayerCollection() {
   game.user=gm;
+  for (const [id,j] of journalMap) {
+    if (j.flags?.['stl-quick-map-notes']?.playerMapJournal) journalMap.delete(id);
+  }
   game.users=playerCollection;
   game.scenes=new Map([[scene.id,{...scene,active:true,dimensions:canvas.dimensions}]]);
   game.folders=new Map();
@@ -506,51 +519,122 @@ test('player GM-validation limits modes, scene, note content, paths and private 
   assert.equal(playerIconValid('assets/icons/custom.svg'),true);
 });
 
-test('first personal note lazily creates Party Map Notes > Personal; unrelated GM Journals stay untouched',async()=>{
-  usePlayerCollection();
-  folderCreates=0;
+test('first personal note creates one Scene-named Journal with private Page and linked pin',async()=>{
+  usePlayerCollection();folderCreates=0;
   const old=journalMap.size;
   const result=await createQuickMapNote({scene,at:{x:40,y:42},form:playerForm(),users:[alice,bob],requester:alice});
   assert.equal(journalMap.size,old+1);
-  assert.deepEqual(result.journal.ownership,{default:0,[alice.id]:3});
-  assert.equal(lastJournalData.folder, 'folder-2');
-  assert.equal(result.journal.flags['stl-quick-map-notes'].playerScope,'personal');
-  assert.equal(result.journal.flags['stl-quick-map-notes'].playerCreated,alice.id);
-  assert.equal(folderCreates,2);
-  const folders=[...game.folders.values()];
-  assert.deepEqual(folders.map(f=>f.name),['Party Map Notes','Personal']);
-  assert.equal(folders[1].folder,folders[0].id);
-  assert.equal(folders[0].type,'JournalEntry');
-  assert.ok(result.note.entryId);
+  assert.equal(result.journal.name,'Maryland Heights');
+  assert.deepEqual(result.journal.ownership,{default:2});
+  assert.deepEqual(result.page.ownership,{default:0,[alice.id]:3});
+  assert.equal(result.page.name,'Old Warehouse');
+  assert.equal(result.page.flags['stl-quick-map-notes'].playerScope,'personal');
+  assert.equal(result.journal.flags['stl-quick-map-notes'].playerMapSceneId,scene.id);
+  assert.equal(lastJournalData.folder, 'folder-1');
+  assert.equal(folderCreates,1);
+  assert.deepEqual([...game.folders.values()].map(f=>f.name),['Party Map Notes']);
+  assert.equal(result.note.entryId,result.journal.id);
+  assert.equal(result.note.pageId,result.page.id);
 });
 
-test('party note creates Shared with Party beneath same parent and gives everyone read access',async()=>{
+test('shared and private notes become separate pages in same Scene journal',async()=>{
+  const old=createCalls;
+  const priorJournal=lastJournalData;
+  const privatePage=[...journalMap.values()].find(j=>j.flags?.['stl-quick-map-notes']?.playerMapJournal).pages[0];
   const result=await createQuickMapNote({scene,at:{x:45,y:46},form:playerForm('party'),users:[alice,bob],requester:bob});
-  assert.deepEqual(result.journal.ownership,{default:2,[bob.id]:3});
-  assert.equal(folderCreates,3);
-  const personal=[...game.folders.values()].find(f=>f.name==='Personal');
-  const shared=[...game.folders.values()].find(f=>f.name==='Shared with Party');
-  const parent=[...game.folders.values()].find(f=>f.name==='Party Map Notes');
-  assert.equal(personal.folder,parent.id);
-  assert.equal(shared.folder,parent.id);
-  assert.equal(lastJournalData.folder,shared.id);
-  assert.equal(result.journal.flags['stl-quick-map-notes'].playerScope,'party');
-  // Another note must reuse the same folder and must not touch prior Journals.
-  await createQuickMapNote({scene,at:{x:47,y:48},form:playerForm('party'),users:[alice,bob],requester:alice});
-  assert.equal(folderCreates,3);
+  assert.equal(createCalls,old,'reuse the original Journal');
+  assert.equal(lastJournalData,priorJournal,'do not rewrite the existing Journal');
+  assert.equal(folderCreates,1,'do not create additional folders');
+  assert.equal(result.journal.name,'Maryland Heights');
+  assert.deepEqual(result.journal.ownership,{default:2});
+  assert.deepEqual(privatePage.ownership,{default:0,[alice.id]:3});
+  assert.deepEqual(result.page.ownership,{default:2,[bob.id]:3});
+  assert.equal(result.page.flags['stl-quick-map-notes'].playerCreated,bob.id);
+  assert.equal(result.journal.pages.length,2);
+  assert.equal(result.note.pageId,result.page.id);
+  assert.notEqual(result.note.pageId,privatePage.id);
+  const additional=await createQuickMapNote({scene,at:{x:47,y:48},form:playerForm('party'),users:[alice,bob],requester:alice});
+  assert.equal(additional.journal.id,result.journal.id);
+  assert.equal(additional.journal.pages.length,3);
 });
 
-test('concurrent player notes reuse one folder tree without duplication',async()=>{
+test('simultaneous player notes serialize per-Scene and never create duplicate Journals',async()=>{
   usePlayerCollection();folderCreates=0;
-  await Promise.all([
+  const before=createCalls;
+  const notes=await Promise.all([
     createQuickMapNote({scene,at:{x:10,y:15},form:playerForm(),requester:alice,users:[alice,bob]}),
-    createQuickMapNote({scene,at:{x:12,y:18},form:playerForm(),requester:bob,users:[alice,bob]})
+    createQuickMapNote({scene,at:{x:12,y:18},form:playerForm('party'),requester:bob,users:[alice,bob]})
   ]);
-  const all=[...game.folders.values()];
-  assert.deepEqual(all.map(f=>f.name),['Party Map Notes','Personal']);
-  assert.equal(folderCreates,2);
-  assert.equal((await ensurePlayerMapNotesFolder('personal')).id,all[1].id);
-  assert.equal(folderCreates,2);
+  assert.equal(folderCreates,1);
+  assert.deepEqual([...game.folders.values()].map(f=>f.name),['Party Map Notes']);
+  assert.equal((await ensurePlayerMapNotesFolder()).id,[...game.folders.values()][0].id);
+  assert.equal(createCalls,before+1);
+  assert.equal(notes[0].journal.id,notes[1].journal.id);
+  assert.equal(notes[0].journal.pages.length,2);
+  assert.notEqual(notes[0].note.pageId,notes[1].note.pageId);
+  assert.deepEqual(notes[0].page.ownership,{default:0,[alice.id]:3});
+  assert.deepEqual(notes[1].page.ownership,{default:2,[bob.id]:3});
+});
+
+test('another Scene with the same display name gets its own Journal by Scene ID',async()=>{
+  usePlayerCollection();folderCreates=0;
+  const first=await createQuickMapNote({scene,at:{x:20,y:25},form:playerForm('party'),requester:bob});
+  const other={...scene,id:'a-different-scene'};
+  const second=await createQuickMapNote({scene:other,at:{x:20,y:25},form:playerForm('personal'),requester:alice});
+  assert.notEqual(first.journal.id,second.journal.id);
+  assert.equal(first.journal.name,second.journal.name);
+  assert.equal(first.journal.flags['stl-quick-map-notes'].playerMapSceneId,scene.id);
+  assert.equal(second.journal.flags['stl-quick-map-notes'].playerMapSceneId,other.id);
+  assert.equal(folderCreates,1);
+});
+
+test('concurrent notes on different scenes create only one Party Map Notes root',async()=>{
+  usePlayerCollection();folderCreates=0;
+  const other={...scene,id:'concurrent-scene',name:'Other Scene'};
+  const notes=await Promise.all([
+    createQuickMapNote({scene,at:{x:10,y:15},form:playerForm(),requester:alice}),
+    createQuickMapNote({scene:other,at:{x:12,y:18},form:playerForm('party'),requester:bob})
+  ]);
+  assert.equal(folderCreates,1);
+  assert.notEqual(notes[0].journal.id,notes[1].journal.id);
+  assert.equal(notes[0].journal.folder,notes[1].journal.folder);
+});
+
+test('name collisions with ordinary Journals do not cause writes to GM data',async()=>{
+  usePlayerCollection();folderCreates=0;
+  const existing={id:'map-name-collision',name:scene.name,folder:'folder-1',pages:[{id:'gm-secret'}],
+    ownership:{default:0}, flags:{world:{campaign:true}}};
+  journalMap.set(existing.id,existing);
+  const first=await createQuickMapNote({scene,at:{x:20,y:25},form:playerForm(),requester:alice});
+  assert.notEqual(first.journal.id,existing.id);
+  assert.deepEqual(existing.pages,[{id:'gm-secret'}]);
+  journalMap.delete(existing.id);
+});
+
+test('manually changed parent permissions block new pages instead of exposing private notes',async()=>{
+  usePlayerCollection();folderCreates=0;
+  const first=await createQuickMapNote({scene,at:{x:20,y:25},form:playerForm(),requester:alice});
+  const journal=first.journal;
+  const before=journal.pages.length;
+  journal.ownership[alice.id]=3;
+  await assert.rejects(createQuickMapNote({scene,at:{x:21,y:26},form:playerForm('party'),requester:bob}),/permissions changed/);
+  assert.equal(journal.pages.length,before);
+  delete journal.ownership[alice.id];
+  journal.ownership.default=0;
+  await assert.rejects(createQuickMapNote({scene,at:{x:22,y:26},form:playerForm('party'),requester:bob}),/permissions changed/);
+  assert.equal(journal.pages.length,before);
+});
+
+test('failed pin placement retains a newly added page for GM recovery',async()=>{
+  usePlayerCollection();folderCreates=0;
+  const first=await createQuickMapNote({scene,at:{x:20,y:25},form:playerForm(),requester:alice});
+  const journal=first.journal;
+  noteShouldFail=true;
+  try {
+    await assert.rejects(createQuickMapNote({scene,at:{x:21,y:26},form:playerForm('party'),requester:bob}),/Journal Page.*was kept/);
+    assert.equal(journal.pages.length,2);
+    assert.deepEqual(journal.pages[1].ownership,{default:2,[bob.id]:3});
+  } finally {noteShouldFail=false;}
 });
 
 test('player request cannot link arbitrary existing GM Journal or choose GM-only visibility',async()=>{
@@ -625,8 +709,9 @@ test('GM handles verified request and places shared note; fake identity cannot b
     assert.equal(result.ok,true);
     assert.equal(createCalls,before+1);
     assert.equal(lastJournalData.ownership.default,2);
-    assert.equal(lastJournalData.ownership[alice.id],3);
-    assert.equal(lastJournalData.ownership[bob.id],undefined);
+    assert.equal(lastJournalData.ownership[alice.id],undefined);
+    assert.deepEqual(lastJournalData.pages[0].ownership,{default:2,[alice.id]:3});
+    assert.ok(result.pageId);
     assert.equal(counter,1);
     const fake=await handlePlayerNoteQuery({requesterId:bob.id,requestId:'b'.repeat(64),
       request:{sceneId:scene.id,at:{x:22,y:22},form:playerForm('party'),image:null}});

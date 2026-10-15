@@ -1,32 +1,37 @@
-# STL Quick Map Notes v0.1.4 — Test Report
+# STL Quick Map Notes v0.1.5 — Test Report
 
-**Release:** 2026-10-15  
-**Intended runtime:** Foundry VTT v14 (system agnostic)  
-**Evidence:** Automated/mock-tested, **not** live Foundry-verified.
+**Release date:** 2026-10-15  
+**Target:** Foundry VTT v14, native Scene Notes / JournalEntry / JournalEntryPage  
+**Evidence:** Automated mock/syntax and package integrity only. Not verified live on a Foundry v14 server.
 
-## Executed checks
+## Local and CI checks
 
 - `node --check scripts/main.mjs` — passed.
-- `node --test tests/quick-map-notes.test.mjs` — **32 passed, 0 failed** (Node.js 22 runtime expected in GitHub Actions).
-- Journal privacy: personal owner permission and default NONE, party default OBSERVER with creator OWNER.
-- Player dialog: only Personal and Shared with Party; no generic existing Journal or GM visibility controls.
-- Native folder setup: lazy `Party Map Notes/Personal` and `Party Map Notes/Shared with Party`, automatic reuse, concurrent requests do not produce duplicates.
-- New Journal and native Note creation: correct folder IDs, ownership, version/player flags; existing world Journals unchanged.
-- GM validation: wrong Scene, invalid icon paths, invalid mode, oversized descriptions, arbitrary existing Journal linkage and unsigned requests rejected before world-document writes.
-- Private GM `User.query` request with targeted challenge; pending response is one-time; forged player request rejected.
-- Icon binary signature, MIME and size checks; GM-only icon upload path preserved.
-- GM regressions: Token Controls, Escape placement cancel, nested Journal list, module/Rules Reference exclusions, native text page, Limited/Observer/GM/selected-player permissions, icon tint and error handling.
-- Local release builder validates ZIP CRC and content; GitHub Actions reruns syntax and tests and separately publishes release.
+- `node --test tests/quick-map-notes.test.mjs` — **37 passed, 0 failed**.
+- ZIP built with Foundry's expected root `stl-quick-map-notes/module.json` and intact icons, JS, docs and tests; verified ZIP CRC and manifest version/URL.
 
-## Required first live multiplayer test
+## Behaviors covered by mock tests
 
-1. Make matching **world and persistent image storage backups**. Update module through stable manifest; hard-refresh the GM and two player browsers.
-2. GM sees button on top Token Controls and can create a GM-only note as before.
-3. Player Alice sees the same button; make **Personal** note with icon/tint. Check Journal under `Party Map Notes > Personal` and Scene pin. Alice can read/edit; Bob sees **neither**. GM can read/edit/delete.
-4. Alice makes **Shared with Party** note; check placement under `Party Map Notes > Shared with Party`. Bob can read but **not** edit; Alice can edit; GM can edit/delete.
-5. Bob creates his own Personal note; Alice should not see it. The folder hierarchy must contain one root and just the two subfolders, without duplicates.
-6. Player tries custom image (512 KB or less) and GM verifies cross-client image rendering. Confirm only authorized notes appear when **Toggle Notes Display** is enabled.
-7. Disconnect GM; player should see the 'GM must be online' warning rather than being granted creation privileges. Reconnect GM and retry.
-8. Confirm Rules Reference remains absent from GM existing-Journal selector and player never sees that selector.
+- GM remains able to create native Journal+Page+pin or link permitted existing Journals; Rules Reference/import filters remain in place.
+- Player requests remain private to the active GM with client-specific identity challenge, Scene/position/contents constraints, and scope checking; arbitrary GM Journal access rejected.
+- One Scene-named, flagged Journal per Scene under **Party Map Notes**, identified by **Scene ID**, not display name. No accidental reuse of unflagged GM Journals.
+- Each player note creates exactly one Page with explicit page-level ownership (private author-only or party-readable author-editable), and each native Scene Note references its pageId. Parent Journal remains Observer without non-GM OWNER rights.
+- Shared and personal notes coexist as Pages in one Journal, with separate author ownership.
+- Simultaneous requests from the same Scene and from two different Scenes reuse the correct Journals/root folder without duplicates.
+- Tampered/moved parent Journals block new writes rather than silently resetting permissions; failed map pin creation leaves the new Page for review.
+- Existing v0.1.4 documents and their flags are never migrated, rewritten or deleted.
 
-**Unverified live:** Folder inheritance/visibility, socket query/challenge delivery, Foundry on-change toolbar API, remote FilePicker upload and token-vision map pin visibility. A passing mock suite or published ZIP is not live success.
+## Required live verification (GM + Alice + Bob)
+
+1. Back up the **world** and module persistent icon storage; upgrade to v0.1.5 and refresh all clients.
+2. Alice creates a **Personal** note on Maryland Heights; confirm `Party Map Notes > Maryland Heights > [page]` and correct pin/page link. Bob must see **neither the private Page nor pin/title**; GM can read/edit.
+3. Bob creates a **Shared with Party** note on the same Scene. Confirm only **one** `Maryland Heights` Journal; Alice can read Bob's page but cannot edit; Bob can edit it. Alice can still edit only her own private Page, not the Journal itself.
+4. Alice creates a note on a second Scene; it creates a distinct Journal named after that Scene. Old `Personal` and `Shared with Party` Journals and notes remain untouched.
+5. Verify icon selection, upload/tint, fog controls and one existing GM-only map note. Ensure party visibility does not reveal GM notes.
+6. Test a multiplayer refresh/reconnect. Confirm Page permissions remain enforced in Journal sidebar, map pin labels and direct Page links.
+
+**Risk:** Foundry v14 Page ownership and native map-pin visibility enforcement are not simulated accurately by JavaScript mocks. Do not use personal pages for secrets until live privacy checks pass.
+
+## Rollback
+
+Restore module v0.1.4 source/ZIP without deleting world documents or persistent icon storage. Rolling back program code does **not** revert new Journals/Pages; restore matching pre-update world backup if a complete data rollback is required.

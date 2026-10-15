@@ -1,12 +1,12 @@
 /**
- * STL Quick Map Notes v0.1.4 — Foundry VTT 14, system-agnostic.
+ * STL Quick Map Notes v0.1.5 — Foundry VTT 14, system-agnostic.
  *
  * Deliberately uses native Scene Note and JournalEntry documents. It does not
  * override core notes, Journal permissions, or Scene Library imports.
  */
 
 const MODULE_ID = "stl-quick-map-notes";
-const VERSION = "0.1.4";
+const VERSION = "0.1.5";
 const ICON_DIR = `modules/${MODULE_ID}/icons`;
 
 export const ICONS = Object.freeze([
@@ -38,10 +38,12 @@ const MAX_PLAYER_FILE_SIZE = 512 * 1024;
 const PLAYER_QUERY = `${MODULE_ID}.createPlayerNote`;
 const VERIFY_QUERY = `${MODULE_ID}.verifyPlayerNote`;
 const PLAYER_ROOT_FOLDER = "Party Map Notes";
-const PLAYER_SUBFOLDERS = Object.freeze({personal:"Personal", party:"Shared with Party"});
+const PLAYER_SCOPES = Object.freeze({personal:"Personal", party:"Shared with Party"});
 const pendingPlayerRequests = new Map();
 const lastPlayerRequest = new Map();
-let folderCreationQueue = Promise.resolve();
+// Serialize each Scene's player-note operations so parallel requests reuse one map Journal.
+const playerNoteQueues = new Map();
+let playerFolderQueue = Promise.resolve();
 
 let armedPlacement = null;
 
@@ -83,10 +85,10 @@ export function buildOwnership(mode, playerChoices = {}, users = []) {
   return ownership;
 }
 
-/** The author can edit their Journal; party notes are readable to everyone else. */
+/** Journal Page ownership: private to author, or readable by party; author owns the page. */
 export function buildPlayerOwnership(mode, userId) {
   if (!userId) throw new Error("Player identity is required for Journal ownership.");
-  if (!Object.hasOwn(PLAYER_SUBFOLDERS, mode)) throw new Error("Invalid player map note section.");
+  if (!Object.hasOwn(PLAYER_SCOPES, mode)) throw new Error("Invalid player map note section.");
   return {default: mode === "party" ? OWNERSHIP.OBSERVER : OWNERSHIP.NONE,
     [userId]: OWNERSHIP.OWNER};
 }
@@ -109,17 +111,100 @@ async function getOrCreateMapNotesFolder(name, parentId) {
   return created;
 }
 
-/** Serialize folder creation to prevent duplicate folders from simultaneous player requests. */
-export function ensurePlayerMapNotesFolder(mode) {
-  if (!game.user?.isGM || !Object.hasOwn(PLAYER_SUBFOLDERS,mode)) {
-    return Promise.reject(new Error("Only the GM can prepare player map note folders."));
+/** Keep new player map Journals directly in Party Map Notes (no new subfolders). */
+export async function ensurePlayerMapNotesFolder() {
+  if (!game.user?.isGM) throw new Error("Only the GM can prepare the Party Map Notes folder.");
+  const next = playerFolderQueue.catch(() => {})
+    .then(() => getOrCreateMapNotesFolder(PLAYER_ROOT_FOLDER, null));
+  playerFolderQueue = next.catch(() => {});
+  return next;
+}
+
+/** Find only entries expressly created for this exact Scene by this module. */
+export function findPlayerMapJournal(sceneId, folderId, journals = game.journal) {
+  for (const journal of journals ?? []) {
+    const flags = journal?.flags?.[MODULE_ID];
+    if (flags?.playerMapSceneId !== sceneId || flags?.playerMapJournal !== true) continue;
+    if (journal.folder?.id !== folderId && journal.folder !== folderId) {
+      throw new Error("The map Journal was moved. Ask the GM to restore it under Party Map Notes.");
+    }
+    // The shared parent must remain OBSERVER, not OWNER, for all players.
+    // Owners edit only their own pages, not the other players' private notes.
+    const ownership = journal.ownership ?? {};
+    if (ownership.default !== OWNERSHIP.OBSERVER ||
+        Object.entries(ownership).some(([id, level]) => id !== "default" && Number(level) > OWNERSHIP.OBSERVER)) {
+      throw new Error("The map Journal permissions changed. Ask the GM to review them before adding notes.");
+    }
+    return journal;
   }
-  const task = folderCreationQueue.then(async () => {
-    const root = await getOrCreateMapNotesFolder(PLAYER_ROOT_FOLDER, null);
-    return getOrCreateMapNotesFolder(PLAYER_SUBFOLDERS[mode], root.id);
+  return null;
+}
+
+function queuePlayerSceneNote(sceneId, task) {
+  const prior = playerNoteQueues.get(sceneId) ?? Promise.resolve();
+  const running = prior.catch(() => {}).then(task);
+  playerNoteQueues.set(sceneId, running);
+  void running.finally(() => {
+    if (playerNoteQueues.get(sceneId) === running) playerNoteQueues.delete(sceneId);
+  }).catch(() => {});
+  return running;
+}
+
+/**
+ * Place each player map note as a PAGE under one Journal named after the Scene.
+ * Explicit per-Page permissions override the shared parent entry's Observer access.
+ * We never select unmarked Journals, even if their names match the Scene name.
+ */
+export async function createPlayerMapNote({scene, at, title, description, form, requester,
+  icon, tint}) {
+  if (!game.user?.isGM || !requester?.id || requester.isGM) {
+    throw new Error("Only the GM may process a player's map note request.");
+  }
+  if (!Object.hasOwn(PLAYER_SCOPES, form.playerScope)) {
+    throw new Error("Choose Personal or Shared with Party for your map note.");
+  }
+  return queuePlayerSceneNote(scene.id, async () => {
+    const folder = await ensurePlayerMapNotesFolder();
+    const pageData = {
+      name: title,
+      type: "text",
+      ownership: buildPlayerOwnership(form.playerScope, requester.id),
+      text: {format:CONST.JOURNAL_ENTRY_PAGE_FORMATS.HTML, content:journalHtml(description)},
+      flags: {[MODULE_ID]: {createdWith:VERSION, playerCreated:requester.id,
+        playerScope:form.playerScope, playerMapSceneId:scene.id}}
+    };
+    let journal = findPlayerMapJournal(scene.id, folder.id);
+    let page;
+    let createdJournal = false;
+    if (!journal) {
+      journal = await JournalEntry.create({
+        name: String(scene.name ?? "").trim() || "Untitled Map",
+        folder:folder.id,
+        ownership: {default: OWNERSHIP.OBSERVER},
+        pages: [pageData],
+        flags: {[MODULE_ID]: {createdWith:VERSION, playerMapJournal:true,
+          playerMapSceneId:scene.id}}
+      });
+      createdJournal = true;
+      page = Array.from(journal?.pages ?? [])[0] ?? null;
+    } else {
+      const pages = await journal.createEmbeddedDocuments("JournalEntryPage", [pageData]);
+      page = pages?.[0] ?? null;
+    }
+    if (!journal?.id || !page?.id) {
+      throw new Error("Unable to create the map Journal Page; any created Journal was preserved.");
+    }
+    const data = makeNoteData({x:at.x, y:at.y, title, journalId:journal.id,
+      pageId:page.id, icon, tint, size:form.iconSize, globallyVisible:form.globallyVisible});
+    try {
+      const created = await scene.createEmbeddedDocuments("Note", [data]);
+      if (!created?.length) throw new Error("Foundry returned no map note.");
+      return {journal, page, note:created[0], icon, tint, linkedExisting:!createdJournal};
+    } catch (error) {
+      // Never silently destroy a page with a player's notes on it.
+      throw new Error(`Map pin failed; the Journal Page "${title}" was kept. ${error.message}`);
+    }
   });
-  folderCreationQueue = task.catch(() => {});
-  return task;
 }
 
 export function makeNoteData({x, y, title, journalId, pageId, icon, tint, size, globallyVisible}) {
@@ -304,7 +389,7 @@ function buildDialogContent() {
           <option value="personal" selected>Personal — only you and the GM</option>
           <option value="party">Shared with Party — everyone can read</option>
         </select></label>
-      <p class="stl-qmn-help stl-qmn-full">You can edit your notes later in the Journal sidebar. The GM can edit or remove any note.</p>
+      <p class="stl-qmn-help stl-qmn-full">All notes for this map go into one Journal with separate page permissions. You can edit your own page later; the GM can edit or remove any note.</p>
       <label class="stl-qmn-field stl-qmn-full"><span>Note / description</span>
         <textarea name="description" rows="4" placeholder="Write your map note here."></textarea></label>
       ` : `
@@ -477,7 +562,7 @@ export async function createQuickMapNote({scene, at, form, uploadedFile = null, 
   if (linkedId && !existing) throw new Error("The selected existing Journal no longer exists.");
   if (requester) {
     if (linkedId) throw new Error("Players create notes in Personal or Shared with Party, not existing Journals.");
-    if (!Object.hasOwn(PLAYER_SUBFOLDERS,form.playerScope)) {
+    if (!Object.hasOwn(PLAYER_SCOPES,form.playerScope)) {
       throw new Error("Choose Personal or Shared with Party for your map note.");
     }
   }
@@ -492,24 +577,23 @@ export async function createQuickMapNote({scene, at, form, uploadedFile = null, 
   const tint = form.applyTint ? hexColor(form.tint) : "#FFFFFF";
   const players = users.filter(u => !u.isGM);
   const choices = Object.fromEntries(players.map(u => [u.id, form[`perm_${u.id}`] ?? 0]));
+  if (requester) {
+    return createPlayerMapNote({scene, at, title, description:form.description, form,
+      requester, icon, tint});
+  }
   let journal = existing;
   let pageId = null;
   if (!journal) {
-    const folder = requester ? await ensurePlayerMapNotesFolder(form.playerScope) : null;
     journal = await JournalEntry.create({
       name: title,
-      ...(folder ? {folder:folder.id} : {}),
-      ownership: requester
-        ? buildPlayerOwnership(form.playerScope, requester.id)
-        : buildOwnership(form.visibility, choices, players),
+      ownership: buildOwnership(form.visibility, choices, players),
       pages: [{
         name: title,
         type: "text",
         ownership: {default: -1}, // Inherit entry permissions; avoid a secret page override.
         text: {format: CONST.JOURNAL_ENTRY_PAGE_FORMATS.HTML, content: journalHtml(form.description)}
       }],
-      flags: {[MODULE_ID]: {createdWith: VERSION,
-        ...(requester ? {playerCreated: requester.id, playerScope:form.playerScope} : {})}}
+      flags: {[MODULE_ID]: {createdWith: VERSION}}
     });
     if (!journal) throw new Error("Foundry did not create the Journal.");
     pageId = Array.from(journal.pages ?? [])[0]?.id ?? null;
@@ -626,7 +710,7 @@ export function validatePlayerNoteRequest({scene, at, form, user, image = null})
   if (typeof form.description !== "string" || form.description.length > 10000) {
     throw new Error("Note descriptions cannot exceed 10,000 characters.");
   }
-  if (!Object.hasOwn(PLAYER_SUBFOLDERS,form.playerScope) || form.existingJournal) {
+  if (!Object.hasOwn(PLAYER_SCOPES,form.playerScope) || form.existingJournal) {
     throw new Error("Players must choose Personal or Shared with Party, not an existing Journal.");
   }
   if (![24,32,40,48,64,80].includes(Number(form.iconSize))) throw new Error("Invalid icon size.");
@@ -693,7 +777,7 @@ export async function handlePlayerNoteQuery({requesterId,requestId,request} = {}
     const result = await createQuickMapNote({scene,at:request.at,form:request.form,
       uploadedFile:image,users:playerUsers(),requester:user});
     return {ok:true,noteId:result.note.id,journalId:result.journal.id,
-      icon:result.icon,tint:result.tint};
+      pageId:result.page?.id,icon:result.icon,tint:result.tint};
   } catch (error) {
     console.warn(`[${MODULE_ID}] Player note request rejected`, error);
     return {ok:false,error:error.message || "Player note creation failed."};

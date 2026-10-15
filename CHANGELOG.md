@@ -1,5 +1,15 @@
 # Release Notes
 
+## v0.1.5 — 2026-10-15
+
+- **Player Scene Journal organization:** One native Journal Entry per Scene, named after the map and filed directly in `Party Map Notes`. Each newly created player note becomes a dedicated JournalEntryPage linked to its native map pin. Uses Scene ID flags to avoid collisions with campaign/GM Journals of the same name.
+- **Native per-Page permissions:** Parent map Journal is OBSERVER for everyone; Personal pages are NONE to party / OWNER to creator; Shared with Party pages are OBSERVER to party / OWNER to creator. GM controls all. No arbitrary Journals are linked or made writable by players.
+- **Concurrency and safety:** Concurrent requests for the same map reuse one Journal. The root folder is also serialized across different Scene requests; no automatic permissions rewrite, migration, deletion or moving existing v0.1.4 Personal/Shared entries. If a map Journal was moved or ownership was raised to player OWNER, further writes stop until GM reviews it. A failed pin write retains its Journal Page.
+- **Preserved:** GM-only/per-player Journal picker and Rules Reference filter, Token Controls, icon chooser/upload/tint, active-GM authentication, all existing Notes/Journals and persistent icon files.
+- **Checks:** Node syntax and 37 isolated mock tests; release ZIP CRC/source validation. **Live Foundry player permissions and pin privacy have not been verified.** Test with two player clients before sensitive personal notes.
+- **Install/rollback:** Back up matching world and module persistent storage. Update through unchanged GitHub manifest; restore v0.1.4 code if needed. World Journals/Pages created under v0.1.5 remain until manually removed or restored from a matching world backup.
+
+
 ## v0.1.4 — 2026-10-15
 
 - **Player access:** Added Quick Map Note to player Token Controls, reusing the GM icon/tint and map-click workflow. Normal player creation requires an active GM client.

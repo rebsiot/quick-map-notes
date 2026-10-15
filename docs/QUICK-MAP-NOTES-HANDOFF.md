@@ -2,7 +2,7 @@
 
 **Project:** St. Louis v2
 **Module ID:** `stl-quick-map-notes`
-**Release:** v0.1.4 (2026-10-15)
+**Release:** v0.1.5 (2026-10-15)
 **Owner:** New independent module conversation. A provisional `16.1 — Quick Map Notes` slot is suggested, subject to `00-START-HERE.md` numbering, which was unavailable at build time.
 **Status:** Automated/mock tested only. Not tested or deployed on a live Foundry v14 instance.
 
@@ -50,7 +50,7 @@ Verify Foundry v14 actual current build and WoD20 version; verify `uploadPersist
 
 - Repository: https://github.com/rebsiot/quick-map-notes (public).
 - Stable manifest: https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json.
-- Current immutable-version ZIP path in repository: `dist/stl-quick-map-notes-v0.1.4.zip` (reflected in manifest download URL).
+- Current immutable-version ZIP path in repository: `dist/stl-quick-map-notes-v0.1.5.zip` (reflected in manifest download URL).
 - `.github/workflows/release.yml` validates source and ZIP, runs automated tests, and publishes versioned GitHub releases.
 - No module ID/schema change. Uploaded icons in module persistent storage are *not* part of releases.
 - This package has not been deployed or live-tested in the user's Foundry world.
@@ -91,3 +91,14 @@ Verify Foundry v14 actual current build and WoD20 version; verify `uploadPersist
 **Release:** v0.1.4 module ID unchanged. 32 Node mock tests + syntax, plus ZIP CRC/build checks. GitHub Actions release and actual live verification are separate. Preserve module persistent storage, world Notes, new Journal folder and permissions on upgrade or rollback.
 
 **Update shared docs after live check:** Add independently numbered component conversation to `00-START-HERE.md`, and note new native Journal folder/ownership and active-GM query dependency in `GLOBAL-02`, deployment smoke checks in `GLOBAL-03`, and verified status in `GLOBAL-04`.
+
+## v0.1.5 — One Journal per Scene, explicit per-Page permissions
+
+- **Design correction requested:** Keep one Journal named after the map under root `Party Map Notes`, with each new player map note as its own Page. Player Personal versus Shared-with-Party permissions are Page-specific; parent Journal remains Observer for all players and has no player OWNERS.
+- **Document contract:** New player Journal `flags.stl-quick-map-notes.playerMapJournal=true`, `.playerMapSceneId=Scene.id`, ownership `{default:2}`, folder direct child of `Party Map Notes`. Pages have `flags.stl-quick-map-notes.playerCreated=<player id>`, `.playerScope=personal|party`, `.playerMapSceneId` and native ownership `{default:0 or 2, [authorId]:3}`; Scene Notes reference both `entryId` and `pageId`. Flags are for grouping only, not permissions.
+- **Safety:** Never absorb or alter unflagged same-name world Journals or migrate v0.1.4 entries. Parent Journal permission modification raising a player to OWNER or removing general Observer access blocks further notes and requires GM review. Existing v0.1.4 `Personal` and `Shared with Party` folders/entries stay in place.
+- **Async concurrency:** Per-Scene creation queue serializes Journal lookup/create and Page append, plus separate global root-folder creation queue. No player document creation privileges or broadcast socket payloads; v0.1.4 targeted User.query verification remains.
+- **Error behavior:** A native Page remains for manual GM review if its map pin creation fails, avoiding loss of description text.
+- **Testing:** 37 isolated Node mock tests and packaging CRC; **live Foundry v14 Journal Page permissions, map pin visibility and author-only Page editing require explicit two-player test**. No claim of live success.
+- **Further work:** If requested later, offer separate previewable migration of legacy individual Journals into per-Scene Pages, with backup/rollback and no silent permission changes. Do not implement migrations automatically.
+- **Shared document notices:** `00-START-HERE.md` should assign formal module/thread, and `GLOBAL-02`, `GLOBAL-03`, `GLOBAL-04` should note per-Page permission contract, required live multiplayer test, and unverified status respectively.
