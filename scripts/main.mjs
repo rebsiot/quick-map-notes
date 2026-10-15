@@ -1,12 +1,12 @@
 /**
- * STL Quick Map Notes v0.1.2 — Foundry VTT 14, system-agnostic.
+ * STL Quick Map Notes v0.1.3 — Foundry VTT 14, system-agnostic.
  *
  * Deliberately uses native Scene Note and JournalEntry documents. It does not
  * override core notes, Journal permissions, or Scene Library imports.
  */
 
 const MODULE_ID = "stl-quick-map-notes";
-const VERSION = "0.1.2";
+const VERSION = "0.1.3";
 const ICON_DIR = `modules/${MODULE_ID}/icons`;
 
 export const ICONS = Object.freeze([
@@ -146,6 +146,26 @@ function journalFolderChain(folder, folders) {
 }
 
 /**
+ * Rules Reference pages can be copied into world Journals without preserving
+ * their module provenance. Exclude a recognized Rules Reference folder tree,
+ * matching standalone index entries, or an explicit rules-reference compendium
+ * source. Other campaign and system journals remain eligible.
+ */
+export function isRulesReferenceName(value) {
+  const normalized = String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return /(?:^|\s)rules reference(?:\s|$)/.test(normalized);
+}
+
+export function isRulesReferenceJournal(journal, folderChain = []) {
+  if (isRulesReferenceName(journal?.name ?? journal?._source?.name)) return true;
+  if (folderChain.some(folder => isRulesReferenceName(folder?.name))) return true;
+  const origin = journal?._stats?.compendiumSource ?? journal?._source?._stats?.compendiumSource ??
+    journal?.flags?.core?.sourceId;
+  return typeof origin === "string" && /^Compendium\./i.test(origin) &&
+    /rules?[\s._-]*reference/i.test(origin);
+}
+
+/**
  * Render one native <select> with visibly indented folder headings and entries.
  * Native HTML selects cannot nest optgroups, so disabled heading options
  * provide the directory structure without adding an alternate UI component.
@@ -156,9 +176,11 @@ export function buildJournalOptions(journals, {folders = game.folders, packs = g
   let eligible = 0;
   for (const journal of journals ?? []) {
     if (!journal?.id || isModuleSuppliedJournal(journal, {packs, modules})) continue;
+    const folderChain = journalFolderChain(journal.folder, folders);
+    if (isRulesReferenceJournal(journal, folderChain)) continue;
     eligible++;
     let branch = root;
-    for (const folder of journalFolderChain(journal.folder, folders)) {
+    for (const folder of folderChain) {
       const id = folder.id ?? folder._id ?? folder.name;
       if (!id) continue;
       if (!branch.folders.has(id)) {

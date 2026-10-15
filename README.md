@@ -1,4 +1,4 @@
-# STL Quick Map Notes v0.1.2
+# STL Quick Map Notes v0.1.3
 
 **Target:** Foundry VTT v14 on Ubuntu; WoD20 `worldofdarkness` compatible because this tool is system-independent. **Status:** syntax and mock tested only; not installed or live-tested in the user's world.
 
@@ -13,7 +13,7 @@ One new tool under the primary **Token Controls** (person icon, first toolbar) i
 `https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json`
 
 Source code: https://github.com/rebsiot/quick-map-notes  
-Versioned module ZIP: https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/dist/stl-quick-map-notes-v0.1.2.zip
+Versioned module ZIP: https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/dist/stl-quick-map-notes-v0.1.3.zip
 
 1. Back up the Foundry world. Preserve the module's `storage/` folder if it exists before replacing any module directory.
 2. In Foundry **Add-on Modules > Install Module**, paste the manifest URL and install.
@@ -44,6 +44,8 @@ Versioned module ZIP: https://raw.githubusercontent.com/rebsiot/quick-map-notes/
 In **Use an existing Journal (optional)**, the dropdown displays ordinary world Journals under their parent folders and nested subfolders, with indented folder headings. Only folders containing eligible entries are shown; unfiled Journals appear separately. Folders are headings, not selectable entries. The chosen Journal is still linked without changing its contents or permissions.
 
 To keep the selector focused on campaign-authored content, it **omits identifiable module-supplied Journals**: documents imported from a module compendium (using Foundry v14 `_stats.compendiumSource` and package metadata), plus module-generated Journals that explicitly mark their origin (including Journals created by Quick Map Notes). Imported content from world-owned or system packs is not automatically removed. Ordinary user Journals remain available even if a module has added unrelated flags to them.
+
+**Rules Reference excluded:** The picker also omits all Journals under a folder named **Rules Reference** (including **M20 Rules Reference**, nested chapters, and similarly named variants), plus journals identified by an explicit Rules Reference compendium source or title. This accommodates rules-library entries imported without preserved module provenance. This only affects the dropdown and does not remove any content or change world permissions.
 
 **Limit:** If a module creates a world Journal without preserving source information or a recognized creation marker, Foundry provides no reliable universal way to identify it. Such unmarked entries can still appear. This is display filtering only: the module does not delete, move, rename or alter Journals or folders.
 

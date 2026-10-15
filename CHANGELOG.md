@@ -1,5 +1,15 @@
 # Release Notes
 
+## v0.1.3 -- 2026-10-15
+
+- **Fixed:** Excluded Rules Reference entries from **Use an existing Journal**, including imported rules-library folders/subfolders whose provenance is unavailable. Also recognizes Rules Reference titles and compendium-source IDs.
+- **Preserved:** All ordinary campaign Journals remain selectable in their folder hierarchy. Native Notes/Journals, world data, permissions, file uploads, and Token Controls placement remain unchanged.
+- **Players:** Remains GM-only. Player-created notes require a separate controlled workflow and are not enabled by this update.
+- **Tests:** Node syntax + 21 isolated mock tests passed, including rules-library paths with missing provenance and preservation of campaign entries. GitHub CI checks the release bundle.
+- **Verification:** Awaiting live Foundry confirmation. If a local Rules Reference uses a different folder name or has no identifying metadata, its name/source must be inspected to extend the filter.
+- **Upgrade/rollback:** Update through existing GitHub manifest or full v0.1.3 ZIP; back up world and module persistent-storage folder. No data migration; return to v0.1.2 if necessary.
+
+
 ## v0.1.2 -- 2026-10-15
 
 - **Changed:** The existing-Journal selector now follows the world Journal folder hierarchy with indented nested folder headings and alphabetical/numeric journal order. Only folders with eligible Journals are displayed; unfiled entries are grouped separately.

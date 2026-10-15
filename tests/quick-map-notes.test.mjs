@@ -68,7 +68,7 @@ globalThis.JournalEntry={
 globalThis.ui={notifications:{info(){},error(){},warn(){}}};
 globalThis.canvas={scene,ready:true,dimensions:{sceneRect:{x:0,y:0,width:500,height:500}}};
 
-const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, buildJournalOptions} = await import('../scripts/main.mjs');
+const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions} = await import('../scripts/main.mjs');
 
 const baseForm = ()=>({
   title:'Old Warehouse',description:'Possible <danger> & clues',
@@ -363,4 +363,65 @@ test('Journal picker rendered by the map dialog filters modules and displays nes
     journalMap.delete(own.id);
     journalMap.delete(imported.id);
   }
+});
+
+
+test('Rules Reference matching is specific and handles common naming variants', () => {
+  for (const value of ['Rules Reference', 'M20 Rules Reference', 'M20 - Rules Reference',
+    'Mage Rules Reference', 'Rules-Reference (Mage)', 'rules_reference']) {
+    assert.equal(isRulesReferenceName(value), true, value);
+  }
+  for (const value of ['Campaign', 'Reference Notes', 'Rules for Magic',
+    'Character Reference', 'Book of Rules']) {
+    assert.equal(isRulesReferenceName(value), false, value);
+  }
+  assert.equal(isRulesReferenceJournal({name:'Rules Reference'}), true);
+  assert.equal(isRulesReferenceJournal({name:'My Journal'}, [{name:'Rules Reference'}]), true);
+  assert.equal(isRulesReferenceJournal({name:'Campaign'}, [{name:'House Rules'}]), false);
+  assert.equal(isRulesReferenceJournal({name:'Spheres', _stats:{
+    compendiumSource:'Compendium.m20-rules-reference.rulebook.JournalEntry.abc'
+  }}), true);
+  assert.equal(isRulesReferenceJournal({name:'Spheres', flags:{core:{
+    sourceId:'Compendium.m20_rulesReference.pages.JournalEntry.abc'
+  }}}), true);
+  assert.equal(isRulesReferenceJournal({name:'Spheres', _stats:{
+    compendiumSource:'Compendium.worldofdarkness.rules.JournalEntry.abc'
+  }}), false);
+});
+
+test('existing Journal picker hides entire Rules Reference subtree even if provenance was stripped', () => {
+  const folder={id:'camp',name:'Campaign',ancestors:[]};
+  const library={id:'ref',name:'M20 Rules Reference',ancestors:[]};
+  const hiddenSection={id:'ref-sub',name:'Spheres',ancestors:[library]};
+  const otherSection={id:'custom-sub',name:'Spheres',ancestors:[folder]};
+  const gameJournals=[
+    {id:'lib1',name:'Correspondence',folder:hiddenSection},
+    {id:'lib2',name:'Arete',folder:library},
+    {id:'lib3',name:'Rules Reference Index',folder:null},
+    {id:'lib4',name:'A Source Without a Folder',folder:null,_stats:{
+      compendiumSource:'Compendium.m20-rules-reference.pages.JournalEntry.abc'
+    }},
+    {id:'keep1',name:'Eli Notes',folder:otherSection},
+    {id:'keep2',name:'Campaign Reference Notes',folder:null},
+    {id:'keep3',name:'House Rules',folder:folder}
+  ];
+  const opts={folders:new Map(),packs:new Map(),modules:new Map()};
+  const html=buildJournalOptions(gameJournals,opts);
+  assert.doesNotMatch(html,/Correspondence|Arete|Rules Reference Index|A Source Without a Folder/);
+  assert.doesNotMatch(html,/M20 Rules Reference/);
+  assert.match(html,/value="keep1"/);
+  assert.match(html,/value="keep2"/);
+  assert.match(html,/value="keep3"/);
+  assert.match(html,/Campaign/);
+  assert.match(html,/Spheres/);
+  assert.ok(html.indexOf('Campaign') < html.indexOf('Eli Notes'));
+});
+
+test('Rules Reference-only folders leave no ghost headings or selectable journals', () => {
+  const ref={id:'ref',name:'Rules Reference',ancestors:[]};
+  const section={id:'ref-child',name:'Chapter One',ancestors:[ref]};
+  const html=buildJournalOptions([{id:'rule',name:'Spheres',folder:section}],{
+    folders:new Map(),packs:new Map(),modules:new Map()
+  });
+  assert.equal(html,'<option value="" disabled>No eligible world Journals found</option>');
 });
