@@ -1,4 +1,4 @@
-# STL Quick Map Notes v0.1.1
+# STL Quick Map Notes v0.1.2
 
 **Target:** Foundry VTT v14 on Ubuntu; WoD20 `worldofdarkness` compatible because this tool is system-independent. **Status:** syntax and mock tested only; not installed or live-tested in the user's world.
 
@@ -13,7 +13,7 @@ One new tool under the primary **Token Controls** (person icon, first toolbar) i
 `https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json`
 
 Source code: https://github.com/rebsiot/quick-map-notes  
-Versioned module ZIP: https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/dist/stl-quick-map-notes-v0.1.1.zip
+Versioned module ZIP: https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/dist/stl-quick-map-notes-v0.1.2.zip
 
 1. Back up the Foundry world. Preserve the module's `storage/` folder if it exists before replacing any module directory.
 2. In Foundry **Add-on Modules > Install Module**, paste the manifest URL and install.
@@ -38,6 +38,14 @@ Versioned module ZIP: https://raw.githubusercontent.com/rebsiot/quick-map-notes/
 - **Upload image...** selects a local PNG/JPEG/WebP/GIF file (up to 5 MB). On Save, the file is uploaded using Foundry v14 `FilePicker.uploadPersistent` to this module's persistent storage. Unique filenames protect existing icons from overwrites. The resulting path is referenced in the Scene Note texture; the binary is **not** embedded in the Journal.
 - Tint is `texture.tint` on the native Note. Disable **Apply tint** to preserve original image colors (`#FFFFFF` neutral tint).
 - Uploads remain server-side until removed by an administrator; canceling before Save does not upload.
+
+## Linking an existing Journal
+
+In **Use an existing Journal (optional)**, the dropdown displays ordinary world Journals under their parent folders and nested subfolders, with indented folder headings. Only folders containing eligible entries are shown; unfiled Journals appear separately. Folders are headings, not selectable entries. The chosen Journal is still linked without changing its contents or permissions.
+
+To keep the selector focused on campaign-authored content, it **omits identifiable module-supplied Journals**: documents imported from a module compendium (using Foundry v14 `_stats.compendiumSource` and package metadata), plus module-generated Journals that explicitly mark their origin (including Journals created by Quick Map Notes). Imported content from world-owned or system packs is not automatically removed. Ordinary user Journals remain available even if a module has added unrelated flags to them.
+
+**Limit:** If a module creates a world Journal without preserving source information or a recognized creation marker, Foundry provides no reliable universal way to identify it. Such unmarked entries can still appear. This is display filtering only: the module does not delete, move, rename or alter Journals or folders.
 
 ## Permissions / visibility
 

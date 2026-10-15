@@ -60,7 +60,7 @@ globalThis.JournalEntry={
   async create(data){
     createCalls++;lastJournalData=data;
     const id=`newjournal${createCalls}`;
-    const j={id, name:data.name,pages:[{id:`newpage${createCalls}`}],ownership:data.ownership};
+    const j={id, name:data.name,pages:[{id:`newpage${createCalls}`}],ownership:data.ownership,flags:data.flags};
     journalMap.set(id,j);
     return j;
   }
@@ -68,7 +68,7 @@ globalThis.JournalEntry={
 globalThis.ui={notifications:{info(){},error(){},warn(){}}};
 globalThis.canvas={scene,ready:true,dimensions:{sceneRect:{x:0,y:0,width:500,height:500}}};
 
-const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,makeNoteData,createQuickMapNote,uploadNewIcon} = await import('../scripts/main.mjs');
+const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, buildJournalOptions} = await import('../scripts/main.mjs');
 
 const baseForm = ()=>({
   title:'Old Warehouse',description:'Possible <danger> & clues',
@@ -240,4 +240,127 @@ test('quick tool arms next scene click, Escape cancels, and click presents icon/
   assert.match(receivedDialog.content.innerHTML,/Upload image/);
   assert.match(receivedDialog.content.innerHTML,/Icon tint/);
   assert.match(receivedDialog.content.innerHTML,/Everyone sees the pin/);
+});
+
+test('module provenance excludes imported module journals but retains world and system imports', () => {
+  const packs=new Map([
+    ['tc-modern.locations',{metadata:{packageType:'module'}}],
+    ['custom-world.notes',{metadata:{packageType:'world'}}],
+    ['worldofdarkness.rules',{metadata:{packageType:'system'}}]
+  ]);
+  const modules=new Map([['tc-modern',{id:'tc-modern'}],['another-addon',{id:'another-addon'}]]);
+  const check = j => isModuleSuppliedJournal(j,{packs,modules});
+  assert.equal(check({id:'j1',_stats:{compendiumSource:'Compendium.tc-modern.locations.JournalEntry.ID123'}}),true);
+  assert.equal(check({id:'j2',_source:{_stats:{compendiumSource:'Compendium.tc-modern.locations.JournalEntry.ID123'}}}),true);
+  assert.equal(check({id:'j3',_stats:{compendiumSource:'Compendium.another-addon.notes.JournalEntry.ID'}}),true);
+  assert.equal(check({id:'j4',_stats:{compendiumSource:'Compendium.custom-world.notes.JournalEntry.ID'}}),false);
+  assert.equal(check({id:'j5',_stats:{compendiumSource:'Compendium.worldofdarkness.rules.JournalEntry.ID'}}),false);
+  assert.equal(check({id:'j6',_stats:{compendiumSource:'JournalEntry.abc'}}),false);
+  assert.equal(check({id:'j7',inCompendium:true}),true);
+  assert.equal(check({id:'j8',flags:{core:{sourceId:'Compendium.tc-modern.locations.JournalEntry.ID'}}}),true);
+});
+
+test('module-generated flag excludes source entries but harmless module metadata never hides user journals', () => {
+  const modules=new Map([['other-module',{}]]);
+  const opts={packs:new Map(),modules};
+  assert.equal(isModuleSuppliedJournal({id:'native',flags:{'other-module':{color:'#00ff00'}}},opts),false);
+  assert.equal(isModuleSuppliedJournal({id:'quick',flags:{'stl-quick-map-notes':{createdWith:'0.1.1'}}},opts),true);
+  assert.equal(isModuleSuppliedJournal({id:'other',flags:{'other-module':{createdBy:'other-module'}}},opts),true);
+  assert.equal(isModuleSuppliedJournal({id:'other2',flags:{'other-module':{moduleCreated:true}}},opts),true);
+  assert.equal(isModuleSuppliedJournal({id:'custom',flags:{world:{createdWith:'my-campaign'}}},opts),false);
+});
+
+test('existing Journal choices follow nested folder hierarchy and escape option text', () => {
+  const root={id:'folder-root',name:'Campaign',ancestors:[]};
+  const locations={id:'folder-loc',name:'Locations',ancestors:[root]};
+  const people={id:'folder-ppl',name:'People',ancestors:[root]};
+  const sub={id:'folder-sub',name:'Warehouses',ancestors:[locations,root]};
+  const empty={id:'folder-empty',name:'Empty Folder',ancestors:[root]};
+  const modules=new Map([['tc-modern',{}]]);
+  const packs=new Map([['tc-modern.entries',{metadata:{packageType:'module'}}]]);
+  const entries=[
+    {id:'j-w',name:'Warehouse 2',folder:sub},
+    {id:'j-p',name:'Zoe & <Co>',folder:people},
+    {id:'j-l',name:'Warehouse 10',folder:sub},
+    {id:'j-unfiled',name:'Unfiled Notes',folder:null},
+    {id:'j-block',name:'Module Secret',folder:empty,_stats:{compendiumSource:'Compendium.tc-modern.entries.JournalEntry.abc'}},
+    {id:'j-qmn',name:'Auto-generated Note',folder:people,flags:{'stl-quick-map-notes':{createdWith:'0.1.1'}}}
+  ];
+  const html=buildJournalOptions(entries,{folders:new Map(),packs,modules});
+  const pos = text => html.indexOf(text);
+  assert.ok(pos('Campaign')>=0);
+  assert.ok(pos('Campaign')<pos('Locations'));
+  assert.ok(pos('Locations')<pos('Warehouses'));
+  assert.ok(pos('Warehouses')<pos('Warehouse 2'));
+  assert.ok(pos('Warehouse 2')<pos('Warehouse 10'));
+  assert.ok(pos('Warehouses')<pos('People') || pos('People')<pos('Locations'));
+  assert.ok(pos('Unfiled') > pos('People'));
+  assert.match(html, /<option value="" disabled>Campaign<\/option>/);
+  assert.match(html, /<option value="j-p">(?:&nbsp;){8}Zoe &amp; &lt;Co&gt;<\/option>/);
+  assert.match(html, /<option value="j-w">(?:&nbsp;){12}Warehouse 2<\/option>/);
+  assert.doesNotMatch(html, /Module Secret|Empty Folder|Auto-generated Note/);
+});
+
+test('journal tree resolves folder IDs, handles cycles, and never creates selectable folder headers', () => {
+  const a={id:'A',name:'A Folder',folder:'B'};
+  const b={id:'B',name:'B Folder',folder:'A'};
+  const folders=new Map([['A',a],['B',b]]);
+  const html=buildJournalOptions([{id:'visible',name:'Journal',folder:'A'}],{folders,packs:new Map(),modules:new Map()});
+  assert.match(html,/value="visible"/);
+  assert.match(html,/A Folder/);
+  assert.match(html,/B Folder/);
+  assert.match(html,/<option value="" disabled>/);
+  assert.equal((html.match(/value="visible"/g)??[]).length,1);
+  assert.equal(buildJournalOptions([], {folders,packs:new Map(),modules:new Map()}),
+    '<option value="" disabled>No eligible world Journals found</option>');
+});
+
+test('Journal picker rendered by the map dialog filters modules and displays nested folders', async () => {
+  const folder={id:'folder-journal',name:'Locations & Clues',ancestors:[]};
+  const own={id:'journal-own',name:'Own Journal',folder};
+  const imported={id:'journal-module',name:'Module Journal',folder,
+    _stats:{compendiumSource:'Compendium.tc-modern.entries.JournalEntry.MOD'}};
+  const priorPacks=game.packs;
+  const priorModules=game.modules;
+  const priorFolders=game.folders;
+  game.packs=new Map([['tc-modern.entries',{metadata:{packageType:'module'}}]]);
+  game.modules=new Map([['tc-modern',{id:'tc-modern'}]]);
+  game.folders=new Map([[folder.id,folder]]);
+  journalMap.set(own.id,own);
+  journalMap.set(imported.id,imported);
+  let config=null;
+  const oldInput=foundry.applications.api.DialogV2.input;
+  foundry.applications.api.DialogV2.input=async options=>{config=options;return null;};
+  const boardEvents=new Map();
+  const board={style:{cursor:'default'},
+    addEventListener(name,handler){boardEvents.set(name,handler);},
+    removeEventListener(name,handler){if(boardEvents.get(name)===handler)boardEvents.delete(name);}
+  };
+  const oldDocument=globalThis.document;
+  const oldApp=canvas.app;
+  const oldConverter=canvas.canvasCoordinatesFromClient;
+  globalThis.document={createElement(){return {innerHTML:''};},addEventListener(){},removeEventListener(){}};
+  canvas.app={canvas:board};
+  canvas.canvasCoordinatesFromClient=pos=>pos;
+  try {
+    const controls={tokens:{tools:{select:{order:1}}}};
+    listeners.get('getSceneControlButtons')(controls);
+    controls.tokens.tools.stlQuickMapNote.onChange();
+    boardEvents.get('pointerdown')({button:0,clientX:20,clientY:30,preventDefault(){},stopImmediatePropagation(){}});
+    await new Promise(setImmediate);
+    assert.ok(config);
+    assert.match(config.content.innerHTML,/Locations &amp; Clues/);
+    assert.match(config.content.innerHTML,/value="journal-own"/);
+    assert.doesNotMatch(config.content.innerHTML,/value="journal-module"/);
+  } finally {
+    foundry.applications.api.DialogV2.input=oldInput;
+    globalThis.document=oldDocument;
+    canvas.app=oldApp;
+    canvas.canvasCoordinatesFromClient=oldConverter;
+    game.packs=priorPacks;
+    game.modules=priorModules;
+    game.folders=priorFolders;
+    journalMap.delete(own.id);
+    journalMap.delete(imported.id);
+  }
 });

@@ -2,7 +2,7 @@
 
 **Project:** St. Louis v2
 **Module ID:** `stl-quick-map-notes`
-**Release:** v0.1.1 (2026-10-15)
+**Release:** v0.1.2 (2026-10-15)
 **Owner:** New independent module conversation. A provisional `16.1 — Quick Map Notes` slot is suggested, subject to `00-START-HERE.md` numbering, which was unavailable at build time.
 **Status:** Automated/mock tested only. Not tested or deployed on a live Foundry v14 instance.
 
@@ -50,7 +50,7 @@ Verify Foundry v14 actual current build and WoD20 version; verify `uploadPersist
 
 - Repository: https://github.com/rebsiot/quick-map-notes (public).
 - Stable manifest: https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json.
-- Current immutable-version ZIP path in repository: `dist/stl-quick-map-notes-v0.1.1.zip` (reflected in manifest download URL).
+- Current immutable-version ZIP path in repository: `dist/stl-quick-map-notes-v0.1.2.zip` (reflected in manifest download URL).
 - `.github/workflows/release.yml` validates source and ZIP, runs automated tests, and publishes versioned GitHub releases.
 - No module ID/schema change. Uploaded icons in module persistent storage are *not* part of releases.
 - This package has not been deployed or live-tested in the user's Foundry world.
@@ -60,3 +60,12 @@ Verify Foundry v14 actual current build and WoD20 version; verify `uploadPersist
 - User requested Quick Map Note under the top **Token Controls** (person icon) instead of Journal Notes; it is a single GM-only button, not a duplicated control.
 - Only the `getSceneControlButtons` injection target changed from `controls.notes.tools` to `controls.tokens.tools` (plus version/release metadata). Placement, dialogs, permissions, native document contracts, and icon storage unchanged.
 - Automated Node mock tests check the new location, absence in Notes, GM-only access, missing Token Controls, and pointer placement. Live Foundry v14 toolbar verification remains pending.
+
+## v0.1.2 change (2026-10-15)
+
+- Existing Journal dropdown now shows a grouped tree using disabled folder headings and indented entries, honoring nested Folder ancestors and grouping unfiled Journals.
+- Filter imported module Journals using Foundry v14 `_stats.compendiumSource` and `game.packs` packageType (with `game.modules` fallback), and module-authored Journals explicitly tagged with creation markers. Do not exclude arbitrary user Journals simply because other modules have attached flags.
+- Journals originating from **world** and **system** compendia stay eligible. Module-created world Journals with stripped/unmarked provenance may still be visible; identifying those requires the relevant module's actual provenance contract, not guesses.
+- Filtering and grouping occur only in `buildJournalOptions`; native Journal permissions, folder membership, document IDs, and creation/linking APIs remain unchanged. No existing world document migration.
+- Automated tests increased from 13 to 18 (v14 provenance, module flags, multi-level folder sorting, malformed folder data, actual dialog integration). Live Foundry checks pending.
+- Versioned ZIP is `dist/stl-quick-map-notes-v0.1.2.zip`, manifest URL remains stable. Continue this standalone module's numbered conversation once officially registered in `00-START-HERE.md`.

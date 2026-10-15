@@ -1,12 +1,12 @@
 /**
- * STL Quick Map Notes v0.1.1 — Foundry VTT 14, system-agnostic.
+ * STL Quick Map Notes v0.1.2 — Foundry VTT 14, system-agnostic.
  *
  * Deliberately uses native Scene Note and JournalEntry documents. It does not
  * override core notes, Journal permissions, or Scene Library imports.
  */
 
 const MODULE_ID = "stl-quick-map-notes";
-const VERSION = "0.1.1";
+const VERSION = "0.1.2";
 const ICON_DIR = `modules/${MODULE_ID}/icons`;
 
 export const ICONS = Object.freeze([
@@ -92,6 +92,109 @@ export function makeNoteData({x, y, title, journalId, pageId, icon, tint, size, 
   };
 }
 
+/**
+ * Only exclude journals with identifiable module provenance. A module adding
+ * unrelated flags to a user-authored journal must NOT hide that journal.
+ * Compendiums are already absent from game.journal, but their imported copies
+ * can be detected via the Foundry v14 _stats.compendiumSource UUID.
+ */
+export function isModuleSuppliedJournal(journal, {packs = game.packs, modules = game.modules} = {}) {
+  if (!journal || journal.inCompendium || journal.compendium || journal.pack) return true;
+
+  for (const [scope, marker] of Object.entries(journal.flags ?? {})) {
+    if (!marker || typeof marker !== "object") continue;
+    if (scope !== MODULE_ID && !modules?.has?.(scope) && !modules?.get?.(scope)) continue;
+    if (marker.createdWith || marker.moduleCreated === true ||
+        marker.createdBy === scope || marker.generatedBy === scope) return true;
+  }
+
+  const origin = journal._stats?.compendiumSource ?? journal._source?._stats?.compendiumSource ??
+    journal.flags?.core?.sourceId;
+  if (typeof origin !== "string") return false;
+  const match = /^Compendium\.([^.]+)\.([^.]+)(?:\.|$)/.exec(origin);
+  if (!match) return false;
+  const pack = packs?.get?.(`${match[1]}.${match[2]}`);
+  const packageType = pack?.metadata?.packageType ?? pack?.metadata?.package?.type;
+  if (packageType === "module") return true;
+  if (packageType === "world" || packageType === "system") return false;
+  return Boolean(modules?.has?.(match[1]) || modules?.get?.(match[1]));
+}
+
+function resolveJournalFolder(value, folders) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  return folders?.get?.(value) ?? (Array.isArray(folders) ? folders.find(f => f.id === value) : null);
+}
+
+/** Return a root-to-leaf Folder chain, using v14's Folder.ancestors where available. */
+function journalFolderChain(folder, folders) {
+  const leaf = resolveJournalFolder(folder, folders);
+  if (!leaf) return [];
+  if (Array.isArray(leaf.ancestors) && leaf.ancestors.length) {
+    return [...leaf.ancestors].reverse().concat(leaf);
+  }
+  const chain = [], seen = new Set();
+  let current = leaf;
+  while (current && chain.length < 32) {
+    const id = current.id ?? current._id ?? current;
+    if (seen.has(id)) break;
+    seen.add(id);
+    chain.unshift(current);
+    current = resolveJournalFolder(current.folder ?? current._source?.folder, folders);
+  }
+  return chain;
+}
+
+/**
+ * Render one native <select> with visibly indented folder headings and entries.
+ * Native HTML selects cannot nest optgroups, so disabled heading options
+ * provide the directory structure without adding an alternate UI component.
+ */
+export function buildJournalOptions(journals, {folders = game.folders, packs = game.packs,
+  modules = game.modules} = {}) {
+  const root = {name: "", folders: new Map(), entries: []};
+  let eligible = 0;
+  for (const journal of journals ?? []) {
+    if (!journal?.id || isModuleSuppliedJournal(journal, {packs, modules})) continue;
+    eligible++;
+    let branch = root;
+    for (const folder of journalFolderChain(journal.folder, folders)) {
+      const id = folder.id ?? folder._id ?? folder.name;
+      if (!id) continue;
+      if (!branch.folders.has(id)) {
+        branch.folders.set(id, {name: String(folder.name ?? "Unnamed Folder"), folders: new Map(), entries: []});
+      }
+      branch = branch.folders.get(id);
+    }
+    branch.entries.push(journal);
+  }
+  if (!eligible) return '<option value="" disabled>No eligible world Journals found</option>';
+
+  const compareNames = (a, b) => String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined,
+    {numeric: true, sensitivity: "base"});
+  const indent = depth => "&nbsp;".repeat(Math.min(depth, 32) * 4);
+  const entryOption = (entry, depth) =>
+    `<option value="${escapeHtml(entry.id)}">${indent(depth)}${escapeHtml(entry.name)}</option>`;
+  const walk = (branch, depth) => {
+    let html = "";
+    for (const folder of [...branch.folders.values()].sort(compareNames)) {
+      html += `<option value="" disabled>${indent(depth)}${escapeHtml(folder.name)}</option>`;
+      html += walk(folder, depth + 1);
+    }
+    for (const entry of branch.entries.sort(compareNames)) html += entryOption(entry, depth);
+    return html;
+  };
+
+  let html = walk({folders: root.folders, entries: []}, 0);
+  if (root.entries.length) {
+    if (root.folders.size) html += '<option value="" disabled>Unfiled</option>';
+    for (const entry of root.entries.sort(compareNames)) {
+      html += entryOption(entry, root.folders.size ? 1 : 0);
+    }
+  }
+  return html;
+}
+
 function iconValid(path) {
   return Boolean(path?.trim()) && !/^(?:javascript:|data:)/i.test(path.trim());
 }
@@ -107,8 +210,7 @@ function buildDialogContent() {
   const optionHtml = ICONS.map(([label, path]) =>
     `<option value="${escapeHtml(path)}" ${preset === path ? "selected" : ""}>${escapeHtml(label)}</option>`
   ).join("");
-  const journals = Array.from(game.journal ?? []).sort((a,b) => a.name.localeCompare(b.name));
-  const journalOptions = journals.map(j => `<option value="${escapeHtml(j.id)}">${escapeHtml(j.name)}</option>`).join("");
+  const journalOptions = buildJournalOptions(game.journal);
   const players = playerUsers();
   const playerRows = players.map(u => `
     <div class="stl-qmn-player-row">

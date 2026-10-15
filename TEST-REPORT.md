@@ -1,31 +1,31 @@
-# STL Quick Map Notes v0.1.1 — Test Report
+# STL Quick Map Notes v0.1.2 -- Test Report
 
 **Date:** 2026-10-15  
-**Target:** Foundry VTT v14.  
-**Evidence level:** Automated/mock-tested only; no live Foundry server or browser available in this session.
+**Target:** Foundry VTT v14, independent of the WoD20 game system.  
+**Evidence level:** Automated/mock-tested only. The live client and world data were not accessed.
 
 ## Automated checks
 
-- `node --check scripts/main.mjs` — PASSED.
-- `node --test tests/quick-map-notes.test.mjs` — 13 PASSED, 0 failed (Node.js v22). Tests cover placement in Token Controls rather than Journal Notes, GM-only visibility, unavailable control fallback, capture-and-Escape placement flow, dialog markup intent, all permission presets, specific-user exclusions, escaped text content, native Note payload, icon/tint/size, existing Journal preservation, failure retention, upload path generation, upload-failure safety and GM-only enforcement.
-- `module.json` parses as valid JSON and has ID/version, Foundry v14 compatibility, `persistentStorage: true`, assets and entrypoint.
-- Bundled SVG icons parse as valid XML with the standard SVG namespace.
+- `node --check scripts/main.mjs` -- passed.
+- `node --test tests/quick-map-notes.test.mjs` -- **18 passed, 0 failed**, Node.js 22.
+- Journal selector coverage: deep folder nesting; correct visual indentation and ordering; `Unfiled`; no empty/module-only folder headings; safe escaping for names; Folder references and IDs; cyclic-folder protection.
+- Provenance coverage: Foundry v14 `_stats.compendiumSource`; module versus world/system packs; module-owned generated markers; unrelated module flags kept; legacy `core.sourceId` fallback.
+- Integration mock confirms the actual creation dialog uses the filtered, folder-indented options.
+- Regression coverage: toolbar location under Token Controls and GM-only access, click placement and Escape, native Notes/Journals, permissions, upload handling and safety.
+- ZIP package built using `tools/build_release.py`; CRC validation, manifest content check and archive file inventory were run locally. GitHub Actions repeats package and test checks on publish.
 
-## Still requires live testing
+## Live verification required
 
-1. Native Quick Map Note button shows under Token Controls (person icon) and not under Journal Notes; click captures exactly one map coordinate.
-2. Rendered DialogV2 fields accept color and selected user permissions; browse and local file upload both function.
-3. Uploaded file URL from `FilePicker.uploadPersistent` resolves for players and persists after manual module update.
-4. Player tests confirm GM-only, pin-only (LIMITED), readable (OBSERVER), and per-user permissions, including Page-level inheritance.
-5. Verify rendered tint with selected white SVG and uploaded multicolor PNG, with and without tint.
-6. Verify `global` pin respects Journal ownership while ignoring token visibility.
-7. Disable module, reload browser, confirm Notes and Journal documents survive.
-8. Verify other modules (Scene Library imported Journals in particular) remain unaffected.
+1. Open Quick Map Note from the person/Token Controls menu, then click the map.
+2. Open **Use an existing Journal**: verify top-level and nested world Journal folders appear indented and in the proper hierarchy.
+3. Verify Journals imported from TC Modern/other module compendiums and previous Quick Map Notes-generated Journals are excluded. Verify a manually authored Journal remains selectable.
+4. Select an eligible Journal, create a pin and verify it links correctly without mutating the Journal.
+5. Confirm preexisting permissions, player visibility, and custom icon uploads/tints still work.
 
-**Do not declare Confirmed Live until tested on the user's Foundry v14 + WoD20 environment.**
+**Known limitation:** Source provenance cannot be inferred from world documents lacking a module source UUID or recognized module creation marker. The picker may show those unmarked module-created entries.
 
-## GitHub distribution checks (2026-10-15)
+## GitHub publishing
 
-- Verify the GitHub `module.json` manifest and downloadable ZIP exist and match version `0.1.1` after upload.
-- GitHub Actions release workflow outcome requires separate verification.
-- A successful repository upload/CI job does **not** confirm live Foundry functionality.
+- Manifest should remain `https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json`.
+- Versioned artifact: `dist/stl-quick-map-notes-v0.1.2.zip`.
+- GitHub release/CI status must be verified separately after publishing; a passing workflow is not evidence of live Foundry success.
