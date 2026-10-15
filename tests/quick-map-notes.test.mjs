@@ -42,6 +42,7 @@ globalThis.game = {
   }
 };
 globalThis.CONST={JOURNAL_ENTRY_PAGE_FORMATS:{HTML:1}};
+globalThis.CONFIG={queries:{}};
 globalThis.foundry={
   utils:{randomID(){return 'Abc12345';}},
   applications:{
@@ -60,7 +61,7 @@ globalThis.JournalEntry={
   async create(data){
     createCalls++;lastJournalData=data;
     const id=`newjournal${createCalls}`;
-    const j={id, name:data.name,pages:[{id:`newpage${createCalls}`}],ownership:data.ownership,flags:data.flags};
+    const j={id, name:data.name,folder:data.folder,pages:[{id:`newpage${createCalls}`}],ownership:data.ownership,flags:data.flags};
     journalMap.set(id,j);
     return j;
   }
@@ -68,7 +69,7 @@ globalThis.JournalEntry={
 globalThis.ui={notifications:{info(){},error(){},warn(){}}};
 globalThis.canvas={scene,ready:true,dimensions:{sceneRect:{x:0,y:0,width:500,height:500}}};
 
-const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions} = await import('../scripts/main.mjs');
+const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder} = await import('../scripts/main.mjs');
 
 const baseForm = ()=>({
   title:'Old Warehouse',description:'Possible <danger> & clues',
@@ -76,7 +77,7 @@ const baseForm = ()=>({
   iconSize:'40',tint:'#edab12',applyTint:true,globallyVisible:false
 });
 
-test('Foundry 14 hook registers one GM-only button on primary Token Controls, not Journal Notes',()=>{
+test('Foundry 14 hook registers one button for players and GMs in Token Controls, not Journal Notes',()=>{
   assert.equal(typeof listeners.get('init'),'function');
   listeners.get('init')();
   const controls={
@@ -92,7 +93,7 @@ test('Foundry 14 hook registers one GM-only button on primary Token Controls, no
   game.user.isGM=false;
   const controls2={tokens:{tools:{select:{order:1}}},notes:{tools:{select:{order:1}}}};
   listeners.get('getSceneControlButtons')(controls2);
-  assert.equal(controls2.tokens.tools.stlQuickMapNote,undefined);
+  assert.equal(controls2.tokens.tools.stlQuickMapNote.button,true);
   game.user.isGM=true;
 });
 
@@ -424,4 +425,224 @@ test('Rules Reference-only folders leave no ghost headings or selectable journal
     folders:new Map(),packs:new Map(),modules:new Map()
   });
   assert.equal(html,'<option value="" disabled>No eligible world Journals found</option>');
+});
+
+// --- v0.1.4: User.query challenges, two player sections, native folders ---
+const gm={id:'g-1',isGM:true,active:true,name:'GM'};
+const alice={id:'p-1',isGM:false,active:true,viewedScene:'scene-123',name:'Alice'};
+const bob={id:'p-2',isGM:false,active:true,viewedScene:'scene-123',name:'Bob'};
+const playerCollection=new Map([[gm.id,gm],[alice.id,alice],[bob.id,bob]]);
+playerCollection.activeGM=gm;
+let folderCreates=0;
+globalThis.Folder={async create(data){
+  folderCreates++;
+  const folder={id:`folder-${folderCreates}`,...data};
+  game.folders.set(folder.id,folder);
+  return folder;
+}};
+function usePlayerCollection() {
+  game.user=gm;
+  game.users=playerCollection;
+  game.scenes=new Map([[scene.id,{...scene,active:true,dimensions:canvas.dimensions}]]);
+  game.folders=new Map();
+  game.packs=new Map();
+  game.modules=new Map();
+}
+const playerForm=(scope='personal')=>({...baseForm(),playerScope:scope});
+
+// Need to make sure player note author can edit, party can read but not modify,
+// and nobody else gets a private note.
+test('ownership presets: personal is private; party is readable but only author owns',()=>{
+  assert.deepEqual(buildPlayerOwnership('personal',alice.id),{default:0,'p-1':3});
+  assert.deepEqual(buildPlayerOwnership('party',alice.id),{default:2,'p-1':3});
+  assert.throws(()=>buildPlayerOwnership('read',alice.id),/Invalid player/);
+  assert.throws(()=>buildPlayerOwnership('personal',''),/Player identity/);
+});
+
+test('player dialog offers Personal and Shared with Party instead of GM Journal selection', async()=>{
+  usePlayerCollection();
+  game.user=alice;
+  const oldInput=foundry.applications.api.DialogV2.input;
+  const events=new Map();
+  const board={style:{cursor:'default'}, addEventListener(name,cb){events.set(name,cb);},
+    removeEventListener(name){events.delete(name);}};
+  canvas.app={canvas:board};
+  canvas.canvasCoordinatesFromClient=p=>p;
+  let capture=null;
+  foundry.applications.api.DialogV2.input=async config=>{capture=config;return null;};
+  const controls={tokens:{tools:{select:{order:1}}}};
+  listeners.get('getSceneControlButtons')(controls);
+  try {
+    controls.tokens.tools.stlQuickMapNote.onChange();
+    events.get('pointerdown')({button:0,clientX:5,clientY:10,preventDefault(){},stopImmediatePropagation(){}});
+    await new Promise(setImmediate);
+    const html=capture.content.innerHTML;
+    assert.match(html, /name="playerScope"/);
+    assert.match(html, /Personal — only you and the GM/);
+    assert.match(html, /Shared with Party — everyone can read/);
+    assert.doesNotMatch(html,/Use an existing Journal|name="visibility"|Choose specific players/);
+    assert.match(html, /name="description"/);
+    assert.match(html,/Icon tint|Upload image/);
+  }finally {foundry.applications.api.DialogV2.input=oldInput;game.user=gm;}
+});
+
+test('player GM-validation limits modes, scene, note content, paths and private Journal links',()=>{
+  usePlayerCollection();
+  const campaignScene=game.scenes.get(scene.id),at={x:22,y:24};
+  const form=playerForm('personal');
+  assert.equal(validatePlayerNoteRequest({scene:campaignScene,at,form,user:alice}),true);
+  assert.equal(validatePlayerNoteRequest({scene:campaignScene,at,form:playerForm('party'),user:alice}),true);
+  assert.throws(()=>validatePlayerNoteRequest({scene:campaignScene,at,form:{...form,playerScope:'read'},user:alice}),/choose Personal/i);
+  assert.throws(()=>validatePlayerNoteRequest({scene:campaignScene,at,form:{...form,existingJournal:'gm-secret'},user:alice}),/not an existing Journal/);
+  assert.throws(()=>validatePlayerNoteRequest({scene:campaignScene,at,form:{...form,description:'x'.repeat(10001)},user:alice}),/10,000/);
+  assert.throws(()=>validatePlayerNoteRequest({scene:campaignScene,at:{x:900,y:90},form,user:alice}),/inside the Scene/);
+  assert.throws(()=>validatePlayerNoteRequest({scene:campaignScene,at,form,user:gm}),/Invalid player/);
+  assert.throws(()=>validatePlayerNoteRequest({scene:{...campaignScene,id:'other'},at,form,user:alice}),/Scene they are viewing/);
+  for(const path of ['https://x.io/track.png','../secrets.png','//host/file.svg','file\\escape.png']){
+    assert.equal(playerIconValid(path),false,path);
+    assert.throws(()=>validatePlayerNoteRequest({scene:campaignScene,at,
+      form:{...form,iconPreset:'custom',customPath:path},user:alice}),/valid map icon/);
+  }
+  assert.equal(playerIconValid('assets/icons/custom.svg'),true);
+});
+
+test('first personal note lazily creates Party Map Notes > Personal; unrelated GM Journals stay untouched',async()=>{
+  usePlayerCollection();
+  folderCreates=0;
+  const old=journalMap.size;
+  const result=await createQuickMapNote({scene,at:{x:40,y:42},form:playerForm(),users:[alice,bob],requester:alice});
+  assert.equal(journalMap.size,old+1);
+  assert.deepEqual(result.journal.ownership,{default:0,[alice.id]:3});
+  assert.equal(lastJournalData.folder, 'folder-2');
+  assert.equal(result.journal.flags['stl-quick-map-notes'].playerScope,'personal');
+  assert.equal(result.journal.flags['stl-quick-map-notes'].playerCreated,alice.id);
+  assert.equal(folderCreates,2);
+  const folders=[...game.folders.values()];
+  assert.deepEqual(folders.map(f=>f.name),['Party Map Notes','Personal']);
+  assert.equal(folders[1].folder,folders[0].id);
+  assert.equal(folders[0].type,'JournalEntry');
+  assert.ok(result.note.entryId);
+});
+
+test('party note creates Shared with Party beneath same parent and gives everyone read access',async()=>{
+  const result=await createQuickMapNote({scene,at:{x:45,y:46},form:playerForm('party'),users:[alice,bob],requester:bob});
+  assert.deepEqual(result.journal.ownership,{default:2,[bob.id]:3});
+  assert.equal(folderCreates,3);
+  const personal=[...game.folders.values()].find(f=>f.name==='Personal');
+  const shared=[...game.folders.values()].find(f=>f.name==='Shared with Party');
+  const parent=[...game.folders.values()].find(f=>f.name==='Party Map Notes');
+  assert.equal(personal.folder,parent.id);
+  assert.equal(shared.folder,parent.id);
+  assert.equal(lastJournalData.folder,shared.id);
+  assert.equal(result.journal.flags['stl-quick-map-notes'].playerScope,'party');
+  // Another note must reuse the same folder and must not touch prior Journals.
+  await createQuickMapNote({scene,at:{x:47,y:48},form:playerForm('party'),users:[alice,bob],requester:alice});
+  assert.equal(folderCreates,3);
+});
+
+test('concurrent player notes reuse one folder tree without duplication',async()=>{
+  usePlayerCollection();folderCreates=0;
+  await Promise.all([
+    createQuickMapNote({scene,at:{x:10,y:15},form:playerForm(),requester:alice,users:[alice,bob]}),
+    createQuickMapNote({scene,at:{x:12,y:18},form:playerForm(),requester:bob,users:[alice,bob]})
+  ]);
+  const all=[...game.folders.values()];
+  assert.deepEqual(all.map(f=>f.name),['Party Map Notes','Personal']);
+  assert.equal(folderCreates,2);
+  assert.equal((await ensurePlayerMapNotesFolder('personal')).id,all[1].id);
+  assert.equal(folderCreates,2);
+});
+
+test('player request cannot link arbitrary existing GM Journal or choose GM-only visibility',async()=>{
+  usePlayerCollection();
+  const secret={id:'gm-secret',name:'GM Plans',testUserPermission:()=>false};
+  journalMap.set(secret.id,secret);
+  const form={...playerForm('personal'),existingJournal:'gm-secret',visibility:'read'};
+  const before=createCalls;
+  try{
+    await assert.rejects(createQuickMapNote({scene,at:{x:20,y:20},form,requester:alice}),/not existing Journals/);
+    assert.equal(createCalls,before);
+  }finally{journalMap.delete(secret.id);}
+});
+
+test('player-uploaded icons reject spoofed MIME and oversized data',async()=>{
+  const pngBytes=Uint8Array.from([137,80,78,71,13,10,26,10,0,0,0,0]);
+  const encoded=await encodePlayerImage(new File([pngBytes],'ok.png',{type:'image/png'}));
+  const restored=decodePlayerImage(encoded);
+  assert.deepEqual(new Uint8Array(await restored.arrayBuffer()),pngBytes);
+  await assert.rejects(encodePlayerImage(new File(['invalid'],'bad.png',{type:'image/png'})),/not a valid image/);
+  await assert.rejects(encodePlayerImage(new File([new Uint8Array(512*1024+1)],'big.png',{type:'image/png'})),/512 KB/);
+  assert.throws(()=>decodePlayerImage({type:'image/png',encoded:btoa('invalid')}),/failed size or image validation/);
+});
+
+test('player query is private to active GM; identity requires matching targeted challenge',async()=>{
+  usePlayerCollection();game.user=alice;
+  const original=gm.query;
+  let outgoing=null;
+  gm.query=async(name,payload,opts)=>{
+    outgoing={name,payload,opts};
+    const verify=verifyPlayerNoteQuery({requestId:payload.requestId,challenge:'d'.repeat(64),sceneId:scene.id});
+    assert.equal(verify.challenge,'d'.repeat(64));
+    assert.equal(verifyPlayerNoteQuery({requestId:payload.requestId,challenge:'d'.repeat(64),sceneId:scene.id}),null,'challenge one-time only');
+    return {ok:true,noteId:'id1',journalId:'journal1',icon:ICONS[0][1],tint:'#FFFFFF'};
+  };
+  try {
+    const input={...playerForm('party'),description:'PRIVATE JOURNAL TEXT'};
+    const res=await submitPlayerNoteRequest({scene,at:{x:30,y:30},form:input});
+    assert.equal(res.noteId,'id1');
+    assert.equal(outgoing.name,'stl-quick-map-notes.createPlayerNote');
+    assert.equal(outgoing.payload.requesterId,alice.id);
+    assert.equal(outgoing.payload.request.form.description,'PRIVATE JOURNAL TEXT');
+    assert.equal(outgoing.payload.request.form.playerScope,'party');
+    assert.equal(outgoing.payload.request.requesterId,undefined);
+    assert.equal(CONFIG.queries['stl-quick-map-notes.verifyPlayerNote'],verifyPlayerNoteQuery);
+    assert.equal(verifyPlayerNoteQuery({requestId:outgoing.payload.requestId,challenge:'d'.repeat(64),sceneId:scene.id}),null);
+  }finally {game.user=gm;gm.query=original;}
+});
+
+test('GM handles verified request and places shared note; fake identity cannot be claimed',async()=>{
+  usePlayerCollection();game.user=alice;
+  const oldGmQuery=gm.query,oldAliceQuery=alice.query,oldBobQuery=bob.query;
+  let counter=0;
+  gm.query=async(name,payload)=>{
+    counter++;
+    const prev=game.user;game.user=gm;
+    const reply=await handlePlayerNoteQuery(payload);
+    game.user=prev;
+    return reply;
+  };
+  alice.query=async(name,payload)=>{
+    assert.equal(name,'stl-quick-map-notes.verifyPlayerNote');
+    const prev=game.user;game.user=alice;
+    const reply=verifyPlayerNoteQuery(payload);
+    game.user=prev;
+    return reply;
+  };
+  bob.query=async()=>null;
+  try {
+    const before=createCalls;
+    const result=await submitPlayerNoteRequest({scene,at:{x:11,y:12},form:playerForm('party')});
+    assert.equal(result.ok,true);
+    assert.equal(createCalls,before+1);
+    assert.equal(lastJournalData.ownership.default,2);
+    assert.equal(lastJournalData.ownership[alice.id],3);
+    assert.equal(lastJournalData.ownership[bob.id],undefined);
+    assert.equal(counter,1);
+    const fake=await handlePlayerNoteQuery({requesterId:bob.id,requestId:'b'.repeat(64),
+      request:{sceneId:scene.id,at:{x:22,y:22},form:playerForm('party'),image:null}});
+    assert.equal(fake.ok,false);
+  }finally{game.user=gm;gm.query=oldGmQuery;alice.query=oldAliceQuery;bob.query=oldBobQuery;}
+});
+
+test('GM rejects a forged player request before creating any folder or Journal',async()=>{
+  usePlayerCollection();folderCreates=0;game.user=gm;
+  const before=createCalls;
+  bob.query=async()=>null;
+  const result=await handlePlayerNoteQuery({requesterId:bob.id,requestId:'e'.repeat(64),
+    request:{sceneId:scene.id,at:{x:3,y:4},form:playerForm('personal'),image:null}});
+  assert.equal(result.ok,false);
+  assert.match(result.error,/verification failed/);
+  assert.equal(createCalls,before);
+  assert.equal(folderCreates,0);
+  delete bob.query;
 });

@@ -1,5 +1,16 @@
 # Release Notes
 
+## v0.1.4 — 2026-10-15
+
+- **Player access:** Added Quick Map Note to player Token Controls, reusing the GM icon/tint and map-click workflow. Normal player creation requires an active GM client.
+- **Player note sections:** Players choose **Personal** (only the creator and GM can read/edit) or **Shared with Party** (everyone reads; creator and GM edit). The player dialog no longer exposes arbitrary existing Journal selection or granular GM-style permissions.
+- **Folder organization:** Player-created native Journals automatically file under `Party Map Notes/Personal` or `Party Map Notes/Shared with Party`. Folders are created lazily, reused across notes, and never reorganize existing Journals.
+- **Security:** A native `User.query` challenge addressed to the claimed user verifies each creation request before the active GM writes anything. GM revalidates Scene, position, note text, icon and section; no player receives general world Journal/Scene write access. Private note text is sent only to GM, not broadcast. Player icon upload limit 512 KB; GM remains at 5 MB.
+- **Unchanged:** GM permissions/Journal picker, Rules Reference exclusion, icons, native Notes/Pages, module ID and persistent upload storage. GMs can edit or delete player notes using standard Foundry tools.
+- **Tests:** 32 isolated Node mock tests plus syntax check; GitHub Actions validates the release artifact separately. Live Foundry multiplayer tests **not yet performed**.
+- **Upgrade/rollback:** Back up world and icon storage; update through the stable GitHub manifest. Disabling or downgrading the module does not remove the new folders, Notes or Journals; undo their creation from a matching world backup if required.
+
+
 ## v0.1.3 -- 2026-10-15
 
 - **Fixed:** Excluded Rules Reference entries from **Use an existing Journal**, including imported rules-library folders/subfolders whose provenance is unavailable. Also recognizes Rules Reference titles and compendium-source IDs.

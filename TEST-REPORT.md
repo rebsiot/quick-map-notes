@@ -1,32 +1,32 @@
-# STL Quick Map Notes v0.1.3 -- Test Report
+# STL Quick Map Notes v0.1.4 — Test Report
 
-**Date:** 2026-10-15  
-**Target:** Foundry VTT v14, independent of the WoD20 game system.  
-**Evidence level:** Automated/mock-tested only. The live client and world data were not accessed.
+**Release:** 2026-10-15  
+**Intended runtime:** Foundry VTT v14 (system agnostic)  
+**Evidence:** Automated/mock-tested, **not** live Foundry-verified.
 
-## Automated checks
+## Executed checks
 
-- `node --check scripts/main.mjs` -- passed.
-- `node --test tests/quick-map-notes.test.mjs` -- **21 passed, 0 failed**, Node.js 22.
-- Rules Reference filtering: common folder/title variants, descendants whose source metadata is stripped, explicit compendium provenance, no orphan folder headings, and no removal of normal campaign notes.
-- Journal selector coverage: deep folder nesting; correct visual indentation and ordering; `Unfiled`; no empty/module-only folder headings; safe escaping for names; Folder references and IDs; cyclic-folder protection.
-- Provenance coverage: Foundry v14 `_stats.compendiumSource`; module versus world/system packs; module-owned generated markers; unrelated module flags kept; legacy `core.sourceId` fallback.
-- Integration mock confirms the actual creation dialog uses the filtered, folder-indented options.
-- Regression coverage: toolbar location under Token Controls and GM-only access, click placement and Escape, native Notes/Journals, permissions, upload handling and safety.
-- ZIP package built using `tools/build_release.py`; CRC validation, manifest content check and archive file inventory were run locally. GitHub Actions repeats package and test checks on publish.
+- `node --check scripts/main.mjs` — passed.
+- `node --test tests/quick-map-notes.test.mjs` — **32 passed, 0 failed** (Node.js 22 runtime expected in GitHub Actions).
+- Journal privacy: personal owner permission and default NONE, party default OBSERVER with creator OWNER.
+- Player dialog: only Personal and Shared with Party; no generic existing Journal or GM visibility controls.
+- Native folder setup: lazy `Party Map Notes/Personal` and `Party Map Notes/Shared with Party`, automatic reuse, concurrent requests do not produce duplicates.
+- New Journal and native Note creation: correct folder IDs, ownership, version/player flags; existing world Journals unchanged.
+- GM validation: wrong Scene, invalid icon paths, invalid mode, oversized descriptions, arbitrary existing Journal linkage and unsigned requests rejected before world-document writes.
+- Private GM `User.query` request with targeted challenge; pending response is one-time; forged player request rejected.
+- Icon binary signature, MIME and size checks; GM-only icon upload path preserved.
+- GM regressions: Token Controls, Escape placement cancel, nested Journal list, module/Rules Reference exclusions, native text page, Limited/Observer/GM/selected-player permissions, icon tint and error handling.
+- Local release builder validates ZIP CRC and content; GitHub Actions reruns syntax and tests and separately publishes release.
 
-## Live verification required
+## Required first live multiplayer test
 
-1. Open Quick Map Note from the person/Token Controls menu, then click the map.
-2. Open **Use an existing Journal**: verify top-level and nested world Journal folders appear indented and in the proper hierarchy.
-3. Verify Journals imported from TC Modern/other module compendiums and previous Quick Map Notes-generated Journals are excluded. Verify **M20 Rules Reference** and its nested pages no longer appear, even when copied into world Journals without original compendium metadata. Verify a manually authored Journal remains selectable.
-4. Select an eligible Journal, create a pin and verify it links correctly without mutating the Journal.
-5. Confirm preexisting permissions, player visibility, and custom icon uploads/tints still work.
+1. Make matching **world and persistent image storage backups**. Update module through stable manifest; hard-refresh the GM and two player browsers.
+2. GM sees button on top Token Controls and can create a GM-only note as before.
+3. Player Alice sees the same button; make **Personal** note with icon/tint. Check Journal under `Party Map Notes > Personal` and Scene pin. Alice can read/edit; Bob sees **neither**. GM can read/edit/delete.
+4. Alice makes **Shared with Party** note; check placement under `Party Map Notes > Shared with Party`. Bob can read but **not** edit; Alice can edit; GM can edit/delete.
+5. Bob creates his own Personal note; Alice should not see it. The folder hierarchy must contain one root and just the two subfolders, without duplicates.
+6. Player tries custom image (512 KB or less) and GM verifies cross-client image rendering. Confirm only authorized notes appear when **Toggle Notes Display** is enabled.
+7. Disconnect GM; player should see the 'GM must be online' warning rather than being granted creation privileges. Reconnect GM and retry.
+8. Confirm Rules Reference remains absent from GM existing-Journal selector and player never sees that selector.
 
-**Known limitation:** Rules Reference filtering recognizes distinctive folder names, Journal titles, and compendium IDs, but cannot infer an unknown alternate folder name with all original module provenance removed. Source provenance cannot be inferred from world documents lacking a module source UUID or recognized module creation marker. The picker may show those unmarked module-created entries.
-
-## GitHub publishing
-
-- Manifest should remain `https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json`.
-- Versioned artifact: `dist/stl-quick-map-notes-v0.1.3.zip`.
-- GitHub release/CI status must be verified separately after publishing; a passing workflow is not evidence of live Foundry success.
+**Unverified live:** Folder inheritance/visibility, socket query/challenge delivery, Foundry on-change toolbar API, remote FilePicker upload and token-vision map pin visibility. A passing mock suite or published ZIP is not live success.

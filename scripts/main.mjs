@@ -1,12 +1,12 @@
 /**
- * STL Quick Map Notes v0.1.3 — Foundry VTT 14, system-agnostic.
+ * STL Quick Map Notes v0.1.4 — Foundry VTT 14, system-agnostic.
  *
  * Deliberately uses native Scene Note and JournalEntry documents. It does not
  * override core notes, Journal permissions, or Scene Library imports.
  */
 
 const MODULE_ID = "stl-quick-map-notes";
-const VERSION = "0.1.3";
+const VERSION = "0.1.4";
 const ICON_DIR = `modules/${MODULE_ID}/icons`;
 
 export const ICONS = Object.freeze([
@@ -25,7 +25,7 @@ export const ICONS = Object.freeze([
   ["Core Foundry Book", "icons/svg/book.svg"]
 ]);
 
-const OWNERSHIP = Object.freeze({ NONE: 0, LIMITED: 1, OBSERVER: 2 });
+const OWNERSHIP = Object.freeze({ NONE: 0, LIMITED: 1, OBSERVER: 2, OWNER: 3 });
 const ALLOWED_UPLOADS = Object.freeze({
   "image/png": "png",
   "image/jpeg": "jpg",
@@ -33,6 +33,15 @@ const ALLOWED_UPLOADS = Object.freeze({
   "image/gif": "gif"
 });
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
+// Player images travel privately to the active GM via User.query; keep the payload small.
+const MAX_PLAYER_FILE_SIZE = 512 * 1024;
+const PLAYER_QUERY = `${MODULE_ID}.createPlayerNote`;
+const VERIFY_QUERY = `${MODULE_ID}.verifyPlayerNote`;
+const PLAYER_ROOT_FOLDER = "Party Map Notes";
+const PLAYER_SUBFOLDERS = Object.freeze({personal:"Personal", party:"Shared with Party"});
+const pendingPlayerRequests = new Map();
+const lastPlayerRequest = new Map();
+let folderCreationQueue = Promise.resolve();
 
 let armedPlacement = null;
 
@@ -72,6 +81,45 @@ export function buildOwnership(mode, playerChoices = {}, users = []) {
     }
   }
   return ownership;
+}
+
+/** The author can edit their Journal; party notes are readable to everyone else. */
+export function buildPlayerOwnership(mode, userId) {
+  if (!userId) throw new Error("Player identity is required for Journal ownership.");
+  if (!Object.hasOwn(PLAYER_SUBFOLDERS, mode)) throw new Error("Invalid player map note section.");
+  return {default: mode === "party" ? OWNERSHIP.OBSERVER : OWNERSHIP.NONE,
+    [userId]: OWNERSHIP.OWNER};
+}
+
+function folderParentId(folder) {
+  return typeof folder?.folder === "string" ? folder.folder : folder?.folder?.id ?? null;
+}
+
+function findMapNotesFolder(name, parentId) {
+  return Array.from(game.folders?.values?.() ?? game.folders ?? []).find(folder => folder.type === "JournalEntry" &&
+    folder.name === name && folderParentId(folder) === parentId) ?? null;
+}
+
+async function getOrCreateMapNotesFolder(name, parentId) {
+  const found = findMapNotesFolder(name, parentId);
+  if (found) return found;
+  const created = await Folder.create({name, type:"JournalEntry", folder:parentId,
+    flags:{[MODULE_ID]:{managedFolder:true,createdWith:VERSION}}});
+  if (!created?.id) throw new Error(`Could not create the ${name} Journal folder.`);
+  return created;
+}
+
+/** Serialize folder creation to prevent duplicate folders from simultaneous player requests. */
+export function ensurePlayerMapNotesFolder(mode) {
+  if (!game.user?.isGM || !Object.hasOwn(PLAYER_SUBFOLDERS,mode)) {
+    return Promise.reject(new Error("Only the GM can prepare player map note folders."));
+  }
+  const task = folderCreationQueue.then(async () => {
+    const root = await getOrCreateMapNotesFolder(PLAYER_ROOT_FOLDER, null);
+    return getOrCreateMapNotesFolder(PLAYER_SUBFOLDERS[mode], root.id);
+  });
+  folderCreationQueue = task.catch(() => {});
+  return task;
 }
 
 export function makeNoteData({x, y, title, journalId, pageId, icon, tint, size, globallyVisible}) {
@@ -171,11 +219,12 @@ export function isRulesReferenceJournal(journal, folderChain = []) {
  * provide the directory structure without adding an alternate UI component.
  */
 export function buildJournalOptions(journals, {folders = game.folders, packs = game.packs,
-  modules = game.modules} = {}) {
+  modules = game.modules, user = null} = {}) {
   const root = {name: "", folders: new Map(), entries: []};
   let eligible = 0;
   for (const journal of journals ?? []) {
     if (!journal?.id || isModuleSuppliedJournal(journal, {packs, modules})) continue;
+    if (user && !user.isGM && !journal.testUserPermission?.(user, "LIMITED")) continue;
     const folderChain = journalFolderChain(journal.folder, folders);
     if (isRulesReferenceJournal(journal, folderChain)) continue;
     eligible++;
@@ -232,9 +281,10 @@ function buildDialogContent() {
   const optionHtml = ICONS.map(([label, path]) =>
     `<option value="${escapeHtml(path)}" ${preset === path ? "selected" : ""}>${escapeHtml(label)}</option>`
   ).join("");
-  const journalOptions = buildJournalOptions(game.journal);
+  const playerMode = !game.user?.isGM;
+  const journalOptions = playerMode ? "" : buildJournalOptions(game.journal, {user: game.user});
   const players = playerUsers();
-  const playerRows = players.map(u => `
+  const playerRows = playerMode ? "" : players.map(u => `
     <div class="stl-qmn-player-row">
       <span>${escapeHtml(u.name)}</span>
       <select name="perm_${escapeHtml(u.id)}">
@@ -248,6 +298,16 @@ function buildDialogContent() {
     <div class="stl-qmn-grid">
       <label class="stl-qmn-field stl-qmn-full"><span>Title / map label</span>
         <input type="text" name="title" maxlength="120" placeholder="e.g. Old Warehouse" required autofocus></label>
+      ${playerMode ? `
+      <label class="stl-qmn-field stl-qmn-full"><span>Save in Party Map Notes</span>
+        <select name="playerScope" id="stl-qmn-scope">
+          <option value="personal" selected>Personal — only you and the GM</option>
+          <option value="party">Shared with Party — everyone can read</option>
+        </select></label>
+      <p class="stl-qmn-help stl-qmn-full">You can edit your notes later in the Journal sidebar. The GM can edit or remove any note.</p>
+      <label class="stl-qmn-field stl-qmn-full"><span>Note / description</span>
+        <textarea name="description" rows="4" placeholder="Write your map note here."></textarea></label>
+      ` : `
       <label class="stl-qmn-field stl-qmn-full"><span>Use an existing Journal (optional)</span>
         <select name="existingJournal" id="stl-qmn-journal"><option value="">Create a new Journal</option>${journalOptions}</select></label>
       <div id="stl-qmn-existing-info" class="stl-qmn-help" hidden>Using an existing Journal: its current permissions and content remain unchanged. Permissions to the Journal also affect its other references.</div>
@@ -267,6 +327,7 @@ function buildDialogContent() {
           ${playerRows}
         </div>
       </div>
+      `}
       <div class="stl-qmn-field stl-qmn-full"><span>Map icon</span>
         <div class="stl-qmn-icon-area">
           <div class="stl-qmn-preview"><img id="stl-qmn-preview" alt="Selected icon" src="${escapeHtml(storedIcon)}"></div>
@@ -293,7 +354,7 @@ function buildDialogContent() {
           </select></label>
       </div>
       <label class="stl-qmn-check stl-qmn-full"><input type="checkbox" name="globallyVisible"> Show pin through fog / token vision restrictions</label>
-      <p class="stl-qmn-help stl-qmn-full">Visibility is still limited by Journal permissions. White icons tint most accurately; full-color uploads are multiplied by the tint, or can keep their original colors.</p>
+      <p class="stl-qmn-help stl-qmn-full">${playerMode ? "Player notes are created by the connected GM. Uploads are limited to 512 KB. " : ""}Visibility is still limited by Journal permissions. White icons tint most accurately; full-color uploads are multiplied by the tint, or can keep their original colors.</p>
     </div>
   </div>`;
 }
@@ -322,6 +383,7 @@ function wireDialog(dialog, state) {
     previewIcon(path);
   }
   function syncJournal() {
+    if (!journalSelect) return;
     const existing = Boolean(journalSelect.value);
     $("#stl-qmn-existing-info").hidden = !existing;
     $("#stl-qmn-description-group").hidden = existing;
@@ -331,6 +393,7 @@ function wireDialog(dialog, state) {
     }
   }
   function syncVisibility() {
+    if (!visibility) return;
     $("#stl-qmn-players").hidden = visibility.value !== "specific";
   }
 
@@ -344,8 +407,8 @@ function wireDialog(dialog, state) {
     iconSelect.value = "custom";
     syncIcon();
   });
-  journalSelect.addEventListener("change", syncJournal);
-  visibility.addEventListener("change", syncVisibility);
+  journalSelect?.addEventListener("change", syncJournal);
+  visibility?.addEventListener("change", syncVisibility);
 
   $("#stl-qmn-browse").addEventListener("click", () => {
     const Picker = foundry.applications.apps.FilePicker;
@@ -367,8 +430,9 @@ function wireDialog(dialog, state) {
   fileInput.addEventListener("change", () => {
     const file = fileInput.files?.[0];
     if (!file) return;
-    if (!ALLOWED_UPLOADS[file.type] || file.size > MAX_FILE_SIZE) {
-      ui.notifications.warn("Use a PNG, JPEG, WebP, or GIF image no larger than 5 MB.");
+    const maxSize = game.user?.isGM ? MAX_FILE_SIZE : MAX_PLAYER_FILE_SIZE;
+    if (!ALLOWED_UPLOADS[file.type] || file.size > maxSize) {
+      ui.notifications.warn(`Use a PNG, JPEG, WebP, or GIF image no larger than ${game.user?.isGM ? "5 MB" : "512 KB"}.`);
       fileInput.value = "";
       state.uploadFile = null;
       customInput.value = "";
@@ -404,12 +468,19 @@ export async function uploadNewIcon(file) {
 }
 
 /** Create exactly one native JournalEntry (or link one existing) and one Note. */
-export async function createQuickMapNote({scene, at, form, uploadedFile = null, users = [], upload = uploadNewIcon}) {
+export async function createQuickMapNote({scene, at, form, uploadedFile = null, users = [],
+  upload = uploadNewIcon, requester = null}) {
   if (!game.user?.isGM) throw new Error("Only a GM can create Quick Map Notes.");
   if (!scene) throw new Error("There is no active Scene.");
   const linkedId = String(form.existingJournal ?? "").trim();
   const existing = linkedId ? game.journal.get(linkedId) : null;
   if (linkedId && !existing) throw new Error("The selected existing Journal no longer exists.");
+  if (requester) {
+    if (linkedId) throw new Error("Players create notes in Personal or Shared with Party, not existing Journals.");
+    if (!Object.hasOwn(PLAYER_SUBFOLDERS,form.playerScope)) {
+      throw new Error("Choose Personal or Shared with Party for your map note.");
+    }
+  }
   const title = String(form.title ?? "").trim() || existing?.name || "";
   if (!title) throw new Error("Enter a title for the new map note.");
 
@@ -424,16 +495,21 @@ export async function createQuickMapNote({scene, at, form, uploadedFile = null, 
   let journal = existing;
   let pageId = null;
   if (!journal) {
+    const folder = requester ? await ensurePlayerMapNotesFolder(form.playerScope) : null;
     journal = await JournalEntry.create({
       name: title,
-      ownership: buildOwnership(form.visibility, choices, players),
+      ...(folder ? {folder:folder.id} : {}),
+      ownership: requester
+        ? buildPlayerOwnership(form.playerScope, requester.id)
+        : buildOwnership(form.visibility, choices, players),
       pages: [{
         name: title,
         type: "text",
         ownership: {default: -1}, // Inherit entry permissions; avoid a secret page override.
         text: {format: CONST.JOURNAL_ENTRY_PAGE_FORMATS.HTML, content: journalHtml(form.description)}
       }],
-      flags: {[MODULE_ID]: {createdWith: VERSION}}
+      flags: {[MODULE_ID]: {createdWith: VERSION,
+        ...(requester ? {playerCreated: requester.id, playerScope:form.playerScope} : {})}}
     });
     if (!journal) throw new Error("Foundry did not create the Journal.");
     pageId = Array.from(journal.pages ?? [])[0]?.id ?? null;
@@ -454,6 +530,173 @@ export async function createQuickMapNote({scene, at, form, uploadedFile = null, 
       throw new Error(`Map pin failed; the new Journal "${title}" was kept. ${error.message}`);
     }
     throw error;
+  }
+}
+
+/** Ensure a custom player icon cannot reference external URLs or parent directories. */
+export function playerIconValid(value) {
+  const path = String(value ?? "").trim();
+  return path.length > 0 && path.length <= 512 &&
+    !path.startsWith("/") && !path.startsWith("\\") && !path.includes("\\") &&
+    !path.includes("..") && !path.includes("//") && !/[?#:\x00-\x1f]/.test(path) &&
+    /\.(?:png|jpe?g|webp|gif|svg)$/i.test(path);
+}
+
+/** Binary icon transfer is limited and decoded only on the trusted GM client. */
+function imageSignatureValid(bytes, type) {
+  if (type === "image/png") return bytes.length >= 8 &&
+    [137,80,78,71,13,10,26,10].every((v,i)=>bytes[i] === v);
+  if (type === "image/jpeg") return bytes.length >= 3 &&
+    bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+  if (type === "image/gif") return bytes.length >= 6 &&
+    (String.fromCharCode(...bytes.slice(0,6)) === "GIF89a" ||
+     String.fromCharCode(...bytes.slice(0,6)) === "GIF87a");
+  if (type === "image/webp") return bytes.length >= 12 &&
+    String.fromCharCode(...bytes.slice(0,4)) === "RIFF" &&
+    String.fromCharCode(...bytes.slice(8,12)) === "WEBP";
+  return false;
+}
+
+export async function encodePlayerImage(file) {
+  if (!file) return null;
+  if (!ALLOWED_UPLOADS[file.type] || file.size > MAX_PLAYER_FILE_SIZE) {
+    throw new Error("Player-uploaded icons must be PNG/JPEG/WebP/GIF, at most 512 KB.");
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (!imageSignatureValid(bytes, file.type)) throw new Error("The uploaded file is not a valid image.");
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  }
+  return {type: file.type, encoded: btoa(binary)};
+}
+
+export function decodePlayerImage(encodedImage) {
+  if (!encodedImage) return null;
+  if (!ALLOWED_UPLOADS[encodedImage?.type] ||
+      typeof encodedImage?.encoded !== "string" ||
+      encodedImage.encoded.length > Math.ceil(MAX_PLAYER_FILE_SIZE * 4 / 3) + 4 ||
+      !/^[A-Za-z0-9+/]*={0,2}$/.test(encodedImage.encoded)) {
+    throw new Error("Invalid uploaded icon payload.");
+  }
+  let bytes;
+  try { bytes = Uint8Array.from(atob(encodedImage.encoded), c => c.charCodeAt(0)); }
+  catch { throw new Error("Invalid encoded icon."); }
+  if (!bytes.length || bytes.length > MAX_PLAYER_FILE_SIZE ||
+      !imageSignatureValid(bytes, encodedImage.type)) {
+    throw new Error("Uploaded icon failed size or image validation.");
+  }
+  return new File([bytes], `player-icon.${ALLOWED_UPLOADS[encodedImage.type]}`,
+    {type: encodedImage.type});
+}
+
+/** Prepare only the fields that a player can submit. */
+function preparePlayerForm(form) {
+  const safe = Object.create(null);
+  safe.title = String(form?.title ?? "").trim();
+  safe.description = String(form?.description ?? "");
+  safe.playerScope = String(form?.playerScope ?? "personal");
+  // Retain any attempt to link an existing Journal so the GM can reject it.
+  safe.existingJournal = String(form?.existingJournal ?? "");
+  safe.iconPreset = String(form?.iconPreset ?? ICONS[0][1]);
+  safe.customPath = String(form?.customPath ?? "");
+  safe.tint = String(form?.tint ?? "#FFFFFF");
+  safe.applyTint = form?.applyTint === true;
+  safe.iconSize = Number(form?.iconSize ?? 40);
+  safe.globallyVisible = form?.globallyVisible === true;
+  return safe;
+}
+
+/** Revalidate every field and Scene on the GM before writing. */
+export function validatePlayerNoteRequest({scene, at, form, user, image = null}) {
+  if (!user?.id || user.isGM || !user.active) throw new Error("Invalid player request.");
+  const viewed = user.viewedScene?.id ?? user.viewedScene;
+  if (!scene?.id || viewed !== scene.id) {
+    throw new Error("Players may only place notes on the Scene they are viewing.");
+  }
+  if (!Number.isFinite(at?.x) || !Number.isFinite(at?.y)) throw new Error("Invalid map position.");
+  const rect = scene.dimensions?.sceneRect ?? scene.getDimensions?.()?.sceneRect;
+  if (rect && (at.x < rect.x || at.y < rect.y ||
+      at.x > rect.x + rect.width || at.y > rect.y + rect.height)) {
+    throw new Error("The map note must be inside the Scene.");
+  }
+  if (!form || typeof form !== "object" || Array.isArray(form)) throw new Error("Invalid note form.");
+  const title = String(form.title ?? "").trim();
+  if (title.length < 1 || title.length > 120) throw new Error("The note title must be 1–120 characters.");
+  if (typeof form.description !== "string" || form.description.length > 10000) {
+    throw new Error("Note descriptions cannot exceed 10,000 characters.");
+  }
+  if (!Object.hasOwn(PLAYER_SUBFOLDERS,form.playerScope) || form.existingJournal) {
+    throw new Error("Players must choose Personal or Shared with Party, not an existing Journal.");
+  }
+  if (![24,32,40,48,64,80].includes(Number(form.iconSize))) throw new Error("Invalid icon size.");
+  if (!/^#[0-9a-f]{6}$/i.test(form.tint)) throw new Error("Invalid icon tint.");
+  const icon = form.iconPreset === "custom" ? form.customPath : form.iconPreset;
+  if (!image && !(ICONS.some(([_,path]) => path === icon) || playerIconValid(icon))) {
+    throw new Error("Choose a valid map icon.");
+  }
+  return true;
+}
+
+/** The targeted player must confirm a pending local request to establish identity. */
+export function verifyPlayerNoteQuery({requestId,challenge,sceneId} = {}) {
+  if (game.user?.isGM || typeof requestId !== "string" ||
+      typeof challenge !== "string" || !/^[0-9a-f]{64}$/.test(challenge)) return null;
+  const pending = pendingPlayerRequests.get(requestId);
+  if (!pending || pending.verified || Date.now()-pending.at > 30000 || pending.sceneId !== sceneId) return null;
+  pending.verified = true;
+  return {challenge};
+}
+
+/** No public broadcast of note text: only the target GM receives the request. */
+export async function submitPlayerNoteRequest({scene, at, form, uploadedFile = null}) {
+  if (game.user?.isGM) throw new Error("GM clients use the normal creation workflow.");
+  const gm = game.users.activeGM;
+  if (!gm?.active) throw new Error("An active GM must be connected to create player map notes.");
+  const random = crypto.getRandomValues(new Uint8Array(32));
+  const requestId = Array.from(random, v=>v.toString(16).padStart(2,"0")).join("");
+  const request = {sceneId:scene.id, at:{x:at.x,y:at.y}, form:preparePlayerForm(form),
+    image: await encodePlayerImage(uploadedFile)};
+  pendingPlayerRequests.set(requestId, {at:Date.now(),sceneId:scene.id,verified:false});
+  try {
+    const result = await gm.query(PLAYER_QUERY, {requesterId:game.user.id,requestId,request},
+      {timeout:30000});
+    if (!result?.ok) throw new Error(result?.error ?? "The GM could not create the map note.");
+    return result;
+  } finally {
+    pendingPlayerRequests.delete(requestId);
+  }
+}
+
+export async function handlePlayerNoteQuery({requesterId,requestId,request} = {}) {
+  if (!game.user?.isGM || game.users.activeGM?.id !== game.user.id) {
+    return {ok:false,error:"Only the active GM can create player notes."};
+  }
+  try {
+    const user = game.users.get(requesterId);
+    if (!user?.active || user.isGM || typeof requestId !== "string" ||
+        !/^[0-9a-f]{64}$/.test(requestId) || !request || typeof request !== "object") {
+      throw new Error("Invalid player note request.");
+    }
+    const scene = game.scenes.get(request.sceneId);
+    const image = decodePlayerImage(request.image);
+    validatePlayerNoteRequest({scene,at:request.at,form:request.form,user,image});
+    const now = Date.now(), last = lastPlayerRequest.get(user.id) ?? 0;
+    if (now-last < 1500) throw new Error("Please avoid placing notes more than once per second.");
+    // The user ID supplied in queryData is NOT trusted until that exact player's
+    // connected client verifies a random challenge for an outstanding local request.
+    const challengeBytes = crypto.getRandomValues(new Uint8Array(32));
+    const challenge = Array.from(challengeBytes, v=>v.toString(16).padStart(2,"0")).join("");
+    const answer = await user.query(VERIFY_QUERY,{requestId,challenge,sceneId:scene.id},{timeout:5000});
+    if (answer?.challenge !== challenge) throw new Error("Player identity verification failed.");
+    lastPlayerRequest.set(user.id,now);
+    const result = await createQuickMapNote({scene,at:request.at,form:request.form,
+      uploadedFile:image,users:playerUsers(),requester:user});
+    return {ok:true,noteId:result.note.id,journalId:result.journal.id,
+      icon:result.icon,tint:result.tint};
+  } catch (error) {
+    console.warn(`[${MODULE_ID}] Player note request rejected`, error);
+    return {ok:false,error:error.message || "Player note creation failed."};
   }
 }
 
@@ -482,7 +725,9 @@ async function showCreationDialog(scene, at) {
   if (!form) return;
   try {
     if (canvas.scene?.id !== scene.id) throw new Error("The active Scene changed; place your note again on the desired Scene.");
-    const result = await createQuickMapNote({scene, at, form, uploadedFile: state.uploadFile, users: playerUsers()});
+    const result = game.user?.isGM
+      ? await createQuickMapNote({scene, at, form, uploadedFile: state.uploadFile, users: playerUsers()})
+      : await submitPlayerNoteRequest({scene, at, form, uploadedFile: state.uploadFile});
     try {
       await Promise.all([
         game.settings.set(MODULE_ID, "lastIcon", result.icon),
@@ -491,7 +736,9 @@ async function showCreationDialog(scene, at) {
     } catch (settingError) {
       console.warn(`[${MODULE_ID}] Failed to remember icon preferences`, settingError);
     }
-    ui.notifications.info(`Created map note: ${result.note?.text ?? result.journal.name}`);
+    ui.notifications.info(game.user?.isGM
+      ? `Created map note: ${result.note?.text ?? result.journal.name}`
+      : "Map note created.");
   } catch (error) {
     console.error(`[${MODULE_ID}] Unable to create map note`, error);
     ui.notifications.error(`Quick Map Notes: ${error.message}`);
@@ -500,7 +747,11 @@ async function showCreationDialog(scene, at) {
 
 /** Capture next canvas click before PIXI placeables react; Escape cancels. */
 function armPlacement() {
-  if (!game.user?.isGM) return;
+  if (!game.user) return;
+  if (!game.user.isGM && !game.users.activeGM?.active) {
+    ui.notifications.warn("A GM must be online to create player map notes.");
+    return;
+  }
   if (!canvas?.ready || !canvas.scene) {
     ui.notifications.warn("Open a Scene before placing a map note.");
     return;
@@ -548,6 +799,8 @@ function armPlacement() {
 
 if (globalThis.Hooks) {
   Hooks.once("init", () => {
+    CONFIG.queries[PLAYER_QUERY] = handlePlayerNoteQuery;
+    CONFIG.queries[VERIFY_QUERY] = verifyPlayerNoteQuery;
     game.settings.register(MODULE_ID, "lastIcon", {
       scope: "client", config: false, type: String, default: ICONS[0][1]
     });
@@ -556,10 +809,10 @@ if (globalThis.Hooks) {
     });
   });
 
-  // Place the GM action on the primary Token Controls (person icon) toolbar.
+  // Give players and GMs the same primary Token Controls (person icon) button.
   // Do not duplicate it under Journal Notes: one discoverable placement button.
   Hooks.on("getSceneControlButtons", controls => {
-    if (!game.user?.isGM || !controls?.tokens?.tools) return;
+    if (!game.user || !controls?.tokens?.tools) return;
     const tools = controls.tokens.tools;
     tools.stlQuickMapNote = {
       name: "stlQuickMapNote",

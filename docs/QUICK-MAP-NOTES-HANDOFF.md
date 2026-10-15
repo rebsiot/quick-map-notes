@@ -2,7 +2,7 @@
 
 **Project:** St. Louis v2
 **Module ID:** `stl-quick-map-notes`
-**Release:** v0.1.3 (2026-10-15)
+**Release:** v0.1.4 (2026-10-15)
 **Owner:** New independent module conversation. A provisional `16.1 — Quick Map Notes` slot is suggested, subject to `00-START-HERE.md` numbering, which was unavailable at build time.
 **Status:** Automated/mock tested only. Not tested or deployed on a live Foundry v14 instance.
 
@@ -50,7 +50,7 @@ Verify Foundry v14 actual current build and WoD20 version; verify `uploadPersist
 
 - Repository: https://github.com/rebsiot/quick-map-notes (public).
 - Stable manifest: https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json.
-- Current immutable-version ZIP path in repository: `dist/stl-quick-map-notes-v0.1.3.zip` (reflected in manifest download URL).
+- Current immutable-version ZIP path in repository: `dist/stl-quick-map-notes-v0.1.4.zip` (reflected in manifest download URL).
 - `.github/workflows/release.yml` validates source and ZIP, runs automated tests, and publishes versioned GitHub releases.
 - No module ID/schema change. Uploaded icons in module persistent storage are *not* part of releases.
 - This package has not been deployed or live-tested in the user's Foundry world.
@@ -77,3 +77,17 @@ Verify Foundry v14 actual current build and WoD20 version; verify `uploadPersist
 - Player-access question raised: current module remains GM-only both for toolbar and actual writes. Enabling player note creation requires a separately designed GM-authorized creation bridge and access restrictions; not silently enabled in v0.1.3.
 - Automated checks: syntax plus 21 mock tests. Real Foundry v14 filtering and multi-client visibility still require live checks.
 - GitHub v0.1.3 release uses stable manifest URL and versioned ZIP; release run and asset must be verified. Preserve persistent image storage on upgrades.
+
+## v0.1.4 — Player notes and `Party Map Notes` folder (2026-10-15)
+
+**Intent:** Players get the Quick Map Note button in Token Controls. GM workflow remains unchanged. The player dialog offers Personal or Shared with Party, not arbitrary existing Journals or GM permissions.
+
+**World data:** One new Journal + single text Page per note and native Scene Note; folder tree `Party Map Notes/Personal` or `Party Map Notes/Shared with Party`, created on demand by the active GM client. No auto-migration of historical Notes/Journals or imports. The root folder with a matching name is reused, as are existing child folders.
+
+**Ownership:** Personal `default:0, creator:3`. Party `default:2, creator:3`. GM retains effective full access. Non-creators may read party notes but cannot edit them; normal Foundry Journal OWNER lets the creator edit. Actual page inheritance `ownership.default:-1` follows parent. Source flags `stl-quick-map-notes.playerCreated` and `.playerScope` identify created entries but do not replace native ownership. GM-made notes continue independent of these folders.
+
+**Authorization:** Player client uses `User.query` to contact active GM. GM sends a fresh random challenge to the claimed player's connected client; that client returns the challenge only if there is a pending locally initiated request with the matching 256-bit request ID. GM checks player Scene, map coordinates, scope, icon and description before any write. No generic `game.socket` broadcast and no player world-document create grant. Query `stl-quick-map-notes.createPlayerNote`; query `stl-quick-map-notes.verifyPlayerNote`. The client must stay connected throughout creation. Player-uploaded raster icons are limited to 512 KB and have MIME/signature validation; GM icon upload remains 5 MB. This is pending live two-player verification.
+
+**Release:** v0.1.4 module ID unchanged. 32 Node mock tests + syntax, plus ZIP CRC/build checks. GitHub Actions release and actual live verification are separate. Preserve module persistent storage, world Notes, new Journal folder and permissions on upgrade or rollback.
+
+**Update shared docs after live check:** Add independently numbered component conversation to `00-START-HERE.md`, and note new native Journal folder/ownership and active-GM query dependency in `GLOBAL-02`, deployment smoke checks in `GLOBAL-03`, and verified status in `GLOBAL-04`.
