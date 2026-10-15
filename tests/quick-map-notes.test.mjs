@@ -79,7 +79,7 @@ globalThis.JournalEntry={
 globalThis.ui={notifications:{info(){},error(){},warn(){}}};
 globalThis.canvas={scene,ready:true,dimensions:{sceneRect:{x:0,y:0,width:500,height:500}}};
 
-const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal} = await import('../scripts/main.mjs');
+const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal,canReadPlayerMapJournal} = await import('../scripts/main.mjs');
 
 const baseForm = ()=>({
   title:'Old Warehouse',description:'Possible <danger> & clues',
@@ -611,18 +611,86 @@ test('name collisions with ordinary Journals do not cause writes to GM data',asy
   journalMap.delete(existing.id);
 });
 
-test('manually changed parent permissions block new pages instead of exposing private notes',async()=>{
+test('existing Observer map Journal allows second and later pages via the GM creation path',async()=>{
+  usePlayerCollection();folderCreates=0;
+  const first=await createQuickMapNote({scene,at:{x:20,y:25},form:playerForm(),requester:alice});
+  const journal=first.journal;
+  const initialJournalData=lastJournalData;
+  assert.equal(canReadPlayerMapJournal(journal,alice),true);
+  const second=await createQuickMapNote({scene,at:{x:22,y:26},form:playerForm('personal'),requester:alice});
+  const third=await createQuickMapNote({scene,at:{x:25,y:29},form:playerForm('party'),requester:bob});
+  assert.equal(second.journal.id,first.journal.id);
+  assert.equal(third.journal.id,first.journal.id);
+  assert.equal(journal.pages.length,3);
+  assert.deepEqual(journal.ownership,{default:2});
+  assert.equal(lastJournalData,initialJournalData,'no change to parent Journal ownership');
+  assert.deepEqual(second.page.ownership,{default:0,[alice.id]:3});
+  assert.deepEqual(third.page.ownership,{default:2,[bob.id]:3});
+  assert.equal(second.note.pageId,second.page.id);
+});
+
+test('explicit GM Owner entry does not falsely block player Observer on parent Journal',async()=>{
+  usePlayerCollection();folderCreates=0;
+  const first=await createQuickMapNote({scene,at:{x:20,y:25},form:playerForm(),requester:alice});
+  const journal=first.journal;
+  journal.ownership[gm.id]=3;
+  const result=await createQuickMapNote({scene,at:{x:22,y:26},form:playerForm('party'),requester:bob});
+  assert.equal(result.journal.id,journal.id);
+  assert.equal(journal.pages.length,2);
+  assert.deepEqual(journal.ownership,{default:2,[gm.id]:3});
+});
+
+test('explicit player Observer grants are valid even when Journal default is NONE',async()=>{
+  usePlayerCollection();folderCreates=0;
+  const first=await createQuickMapNote({scene,at:{x:20,y:25},form:playerForm(),requester:alice});
+  const journal=first.journal;
+  journal.ownership.default=0;
+  journal.ownership[alice.id]='2';
+  journal.ownership[bob.id]=2;
+  const another=await createQuickMapNote({scene,at:{x:21,y:26},form:playerForm('party'),requester:bob});
+  assert.equal(another.journal.id,journal.id);
+  assert.deepEqual(journal.ownership,{default:0,[alice.id]:'2',[bob.id]:2});
+  assert.equal(journal.pages.length,2);
+});
+
+test('Foundry native testUserPermission is authoritative for Journal Observer access',async()=>{
+  usePlayerCollection();folderCreates=0;
+  const first=await createQuickMapNote({scene,at:{x:20,y:25},form:playerForm(),requester:alice});
+  const journal=first.journal;
+  const called=[];
+  journal.testUserPermission=(user,level)=>{called.push([user.id,level]);return user.id===alice.id;};
+  const before=journal.pages.length;
+  await assert.rejects(createQuickMapNote({scene,at:{x:21,y:26},form:playerForm('personal'),requester:bob}),/do not have Observer access/);
+  assert.equal(journal.pages.length,before);
+  await assert.rejects(createQuickMapNote({scene,at:{x:21,y:26},form:playerForm('party'),requester:alice}),/not readable by every player/);
+  assert.equal(journal.pages.length,before);
+  assert.ok(called.some(([id,level])=>id===bob.id&&level==='OBSERVER'));
+});
+
+test('unsafe parent OWNER grants still block page creation to protect private notes',async()=>{
   usePlayerCollection();folderCreates=0;
   const first=await createQuickMapNote({scene,at:{x:20,y:25},form:playerForm(),requester:alice});
   const journal=first.journal;
   const before=journal.pages.length;
   journal.ownership[alice.id]=3;
-  await assert.rejects(createQuickMapNote({scene,at:{x:21,y:26},form:playerForm('party'),requester:bob}),/permissions changed/);
+  await assert.rejects(createQuickMapNote({scene,at:{x:21,y:26},form:playerForm('party'),requester:bob}),/player Owner access/);
   assert.equal(journal.pages.length,before);
   delete journal.ownership[alice.id];
-  journal.ownership.default=0;
-  await assert.rejects(createQuickMapNote({scene,at:{x:22,y:26},form:playerForm('party'),requester:bob}),/permissions changed/);
+  journal.ownership.default=3;
+  await assert.rejects(createQuickMapNote({scene,at:{x:22,y:26},form:playerForm('party'),requester:bob}),/player Owner access/);
   assert.equal(journal.pages.length,before);
+});
+
+test('restricted parent Observer visibility allows Personal but not inaccessible Shared pages',async()=>{
+  usePlayerCollection();folderCreates=0;
+  const first=await createQuickMapNote({scene,at:{x:20,y:25},form:playerForm(),requester:alice});
+  const journal=first.journal;
+  journal.ownership.default=0;
+  journal.ownership[alice.id]=2;
+  const second=await createQuickMapNote({scene,at:{x:23,y:26},form:playerForm('personal'),requester:alice});
+  assert.equal(second.journal.id,journal.id);
+  await assert.rejects(createQuickMapNote({scene,at:{x:24,y:27},form:playerForm('party'),requester:alice}),/not readable by every player/);
+  assert.equal(journal.pages.length,2);
 });
 
 test('failed pin placement retains a newly added page for GM recovery',async()=>{

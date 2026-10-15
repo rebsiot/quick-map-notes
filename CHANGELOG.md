@@ -1,5 +1,15 @@
 # Release Notes
 
+## v0.1.6 — 2026-10-15
+
+- **Fixed:** On a subsequent player map note, the existing Scene Journal lookup no longer rejects valid native Observer permissions simply because they were granted per player rather than as the Journal default. An explicit GM Owner entry is also recognized as safe. This fixes the v0.1.5 red toast `The map Journal permissions changed` in these cases.
+- **Permissions model unchanged:** Players still use **Quick Map Note** in Token Controls to add another Page. The connected GM creates the embedded Page via authenticated `User.query`; players do not need (and must not receive) OWNER on the map Journal. Native Journal **Add Page** is still not available to Observers. Each Page retains explicit Personal/Party ownership, and each map pin retains its Page ID.
+- **Safety:** A non-GM OWNER on the parent Journal remains blocked to avoid exposing private Pages. A player must be able to observe the parent to create a Personal Page; a Shared with Party Page additionally requires Observer access for every player. Uses Foundry `testUserPermission` when available; does not change permissions or existing Journal/Note/Page data automatically.
+- **Preserved:** Stable module ID and manifest URL, Journal-per-Scene grouping, GM workflow, icons, upload storage, existing folders/Journals/Pages/Notes, and Rules Reference filtering. No migration.
+- **Tests:** 42 isolated Node mock tests plus syntax and package CRC/source checks. User supplied live screenshot of v0.1.5 failure; v0.1.6 multiplayer permission/pin privacy **has not been live verified**.
+- **Upgrade/rollback:** Back up world and module persistent storage; use existing GitHub manifest's update path. Restore v0.1.5 code to roll back the program; rollback does not remove any world documents created after upgrade.
+
+
 ## v0.1.5 — 2026-10-15
 
 - **Player Scene Journal organization:** One native Journal Entry per Scene, named after the map and filed directly in `Party Map Notes`. Each newly created player note becomes a dedicated JournalEntryPage linked to its native map pin. Uses Scene ID flags to avoid collisions with campaign/GM Journals of the same name.

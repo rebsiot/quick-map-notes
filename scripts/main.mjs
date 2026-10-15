@@ -1,12 +1,12 @@
 /**
- * STL Quick Map Notes v0.1.5 — Foundry VTT 14, system-agnostic.
+ * STL Quick Map Notes v0.1.6 — Foundry VTT 14, system-agnostic.
  *
  * Deliberately uses native Scene Note and JournalEntry documents. It does not
  * override core notes, Journal permissions, or Scene Library imports.
  */
 
 const MODULE_ID = "stl-quick-map-notes";
-const VERSION = "0.1.5";
+const VERSION = "0.1.6";
 const ICON_DIR = `modules/${MODULE_ID}/icons`;
 
 export const ICONS = Object.freeze([
@@ -120,20 +120,50 @@ export async function ensurePlayerMapNotesFolder() {
   return next;
 }
 
-/** Find only entries expressly created for this exact Scene by this module. */
-export function findPlayerMapJournal(sceneId, folderId, journals = game.journal) {
+/** Check a user's effective access to a map Journal, not its exact ownership JSON.
+ * Foundry may store Observer as a per-user override rather than as the default.
+ */
+export function canReadPlayerMapJournal(journal, user) {
+  if (!user?.id || !journal) return false;
+  if (user.isGM) return true;
+  if (typeof journal.testUserPermission === "function") {
+    return journal.testUserPermission(user, "OBSERVER");
+  }
+  // Mock/backward-compatibility fallback. The live v14 document method above
+  // remains authoritative for role and ownership resolution.
+  const ownership = journal.ownership ?? journal._source?.ownership ?? {};
+  return Number(ownership[user.id] ?? ownership.default ?? OWNERSHIP.NONE) >= OWNERSHIP.OBSERVER;
+}
+
+/** Find only entries expressly created for this exact Scene by this module.
+ * Non-GM parent OWNER rights could expose other authors' private Pages, so
+ * never grant them or accept them as a shortcut for native Page creation.
+ * Player requests are already processed by the active GM via User.query.
+ */
+export function findPlayerMapJournal(sceneId, folderId, journals = game.journal,
+  {requester = null, scope = null, users = game.users} = {}) {
   for (const journal of journals ?? []) {
     const flags = journal?.flags?.[MODULE_ID];
     if (flags?.playerMapSceneId !== sceneId || flags?.playerMapJournal !== true) continue;
     if (journal.folder?.id !== folderId && journal.folder !== folderId) {
       throw new Error("The map Journal was moved. Ask the GM to restore it under Party Map Notes.");
     }
-    // The shared parent must remain OBSERVER, not OWNER, for all players.
-    // Owners edit only their own pages, not the other players' private notes.
-    const ownership = journal.ownership ?? {};
-    if (ownership.default !== OWNERSHIP.OBSERVER ||
-        Object.entries(ownership).some(([id, level]) => id !== "default" && Number(level) > OWNERSHIP.OBSERVER)) {
-      throw new Error("The map Journal permissions changed. Ask the GM to review them before adding notes.");
+    const ownership = journal.ownership ?? journal._source?.ownership ?? {};
+    const playerAccounts = Array.from(users?.values?.() ?? users ?? []).filter(u => u && !u.isGM);
+    const gmIds = new Set(Array.from(users?.values?.() ?? users ?? [])
+      .filter(u => u?.isGM).map(u => u.id));
+    // The GM may have an explicit OWNER override; that does not expose any
+    // private Pages. A non-GM OWNER on the parent does, so keep that safeguard.
+    if (Number(ownership.default ?? OWNERSHIP.NONE) > OWNERSHIP.OBSERVER ||
+        Object.entries(ownership).some(([id, level]) => id !== "default" &&
+          Number(level) > OWNERSHIP.OBSERVER && !gmIds.has(id))) {
+      throw new Error("The map Journal gives a player Owner access. Ask the GM to use Observer access on the Journal and Owner access only on the author's Page.");
+    }
+    if (requester && !canReadPlayerMapJournal(journal, requester)) {
+      throw new Error("You do not have Observer access to this map Journal. Ask the GM to grant access before adding notes.");
+    }
+    if (scope === "party" && playerAccounts.some(user => !canReadPlayerMapJournal(journal, user))) {
+      throw new Error("The map Journal is not readable by every player. Ask the GM to grant Observer access before adding a Shared with Party note.");
     }
     return journal;
   }
@@ -173,7 +203,8 @@ export async function createPlayerMapNote({scene, at, title, description, form, 
       flags: {[MODULE_ID]: {createdWith:VERSION, playerCreated:requester.id,
         playerScope:form.playerScope, playerMapSceneId:scene.id}}
     };
-    let journal = findPlayerMapJournal(scene.id, folder.id);
+    let journal = findPlayerMapJournal(scene.id, folder.id, game.journal,
+      {requester, scope:form.playerScope, users:game.users});
     let page;
     let createdJournal = false;
     if (!journal) {
@@ -389,7 +420,7 @@ function buildDialogContent() {
           <option value="personal" selected>Personal — only you and the GM</option>
           <option value="party">Shared with Party — everyone can read</option>
         </select></label>
-      <p class="stl-qmn-help stl-qmn-full">All notes for this map go into one Journal with separate page permissions. You can edit your own page later; the GM can edit or remove any note.</p>
+      <p class="stl-qmn-help stl-qmn-full">All notes for this map go into one Journal with separate page permissions. Use Quick Map Note to add another page (the native Journal Add Page button is GM-only). You can edit your own page later; the GM can edit or remove any note.</p>
       <label class="stl-qmn-field stl-qmn-full"><span>Note / description</span>
         <textarea name="description" rows="4" placeholder="Write your map note here."></textarea></label>
       ` : `

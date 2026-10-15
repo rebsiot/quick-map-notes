@@ -1,8 +1,8 @@
-# STL Quick Map Notes v0.1.5
+# STL Quick Map Notes v0.1.6
 
 **Foundry VTT:** v14 (system independent; intended for the St. Louis M20/V20 world)  
 **Module ID:** `stl-quick-map-notes`  
-**Verification:** Automated/mock tested. Not yet verified on the user's live Foundry server with multiple accounts.
+**Verification:** Automated/mock tested; v0.1.5 permission failure was user-reported, but v0.1.6 is not yet live multiplayer verified.
 
 ## Install or update
 
@@ -11,7 +11,7 @@
 `https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json`
 
 **Source:** https://github.com/rebsiot/quick-map-notes  
-**Release:** https://github.com/rebsiot/quick-map-notes/releases/tag/v0.1.5
+**Release:** https://github.com/rebsiot/quick-map-notes/releases/tag/v0.1.6
 
 1. Back up your **world**, especially Scenes, Notes, Journals, and ownership settings. When manually replacing files, also preserve persistent uploaded image storage.
 2. In Foundry Setup → **Add-on Modules**, choose **Update Modules** (if already installed), or **Install Module** and paste the manifest URL.
@@ -21,7 +21,11 @@
 
 **Manual ZIP installation:** Stop Foundry, extract the complete `stl-quick-map-notes` folder to `Z:\Data\modules\stl-quick-map-notes` (so `module.json` is immediately inside), restart, enable the module and reload. Do **not** delete existing world data or the module's persistent storage.
 
-## Player workflow — v0.1.5
+## Player workflow — v0.1.6
+
+**Adding another page:** Click **Quick Map Note** under Token Controls (person icon), click the map and save. This asks the connected GM to append a Page to the same map Journal. Players are **Observers on the parent Journal**, so Foundry's native **Add Page** control is intentionally unavailable; page creation through this module does not require Journal OWNER permissions. Each author owns only their own Page.
+
+**v0.1.6 permission fix:** Existing map Journals can grant Observer to individual players rather than using default Observer. The module checks effective access (using the native permission API) and accepts GM-specific Owner permissions. It still blocks non-GM OWNER on the parent to protect other players' Personal Pages. For Shared with Party notes, everyone must be able to observe the parent. No ownership grants are automatically modified.
 
 Players have **Quick Map Note** in Token Controls (person icon), just like the GM. They choose **Personal** (only author + GM) or **Shared with Party** (everyone reads; only author + GM edit).
 
@@ -42,7 +46,7 @@ Party Map Notes/
 | Personal | Map Journal: default `OBSERVER` (2) | `default: NONE (0)`, author `OWNER (3)` | Expected: author + GM only |
 | Shared with Party | Same map Journal: `OBSERVER` | `default: OBSERVER (2)`, author `OWNER (3)` | Expected: all players with map visibility |
 
-**Permissions live on the native Page, not the parent Journal.** The parent must be observable to all players so each can see authorized pages; ownership of the Journal itself is not granted to players. Page permissions give the author edit access to that page, while preventing other players from seeing personal pages or editing another author's shared page. The GM retains full access. If the Journal's ownership is edited to grant a player OWNER or made less than OBSERVER, the module stops appending new pages until a GM reviews it, rather than silently overriding permissions.
+**Permissions live on the native Page, not the parent Journal.** Each note author must be able to observe the map Journal, and all party members need Observer access when adding a Shared with Party Page; ownership of the Journal itself is not granted to players. Page permissions give the author edit access to that page, while preventing other players from seeing personal pages or editing another author's shared page. The GM retains full access. If the Journal's ownership grants a player OWNER, or the intended readers lack Observer access, the module stops appending those pages until a GM reviews it, rather than silently overriding permissions.
 
 **Existing world documents are not reorganized.** Notes and Journals created by v0.1.4 remain in `Party Map Notes/Personal` and `Party Map Notes/Shared with Party` with their existing IDs, links and access. The old subfolders remain in place; this version creates **new notes** directly in per-Scene Journals under the root. Existing GM Journals with the same map name are never reused or modified: reuse requires the module's `playerMapJournal` and `playerMapSceneId` flags and correct root folder.
 
