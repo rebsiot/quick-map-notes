@@ -1,0 +1,28 @@
+{
+  "id": "stl-quick-map-notes",
+  "title": "STL Quick Map Notes",
+  "description": "Create native map pins and linked journals with icon selection, custom image uploads, tint, and GM/player visibility presets.",
+  "version": "0.1.0",
+  "compatibility": {
+    "minimum": "14",
+    "verified": "14",
+    "maximum": "14"
+  },
+  "authors": [
+    {
+      "name": "St. Louis v2 (private toolkit)"
+    }
+  ],
+  "esmodules": [
+    "scripts/main.mjs"
+  ],
+  "styles": [
+    "styles/quick-map-notes.css"
+  ],
+  "readme": "README.md",
+  "license": "LICENSE",
+  "persistentStorage": true,
+  "url": "https://github.com/rebsiot/quick-map-notes",
+  "manifest": "https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json",
+  "download": "https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/dist/stl-quick-map-notes-v0.1.0.zip"
+}

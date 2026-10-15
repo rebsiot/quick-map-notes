@@ -1,0 +1,57 @@
+name: Verify and release Quick Map Notes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "dist/stl-quick-map-notes-v*.zip"
+      - "module.json"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate versioned package
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p 'JSON.parse(require("fs").readFileSync("module.json", "utf8")).version')"
+          ARCHIVE="dist/stl-quick-map-notes-v${VERSION}.zip"
+          test -f "${ARCHIVE}"
+          unzip -tq "${ARCHIVE}"
+          unzip -p "${ARCHIVE}" stl-quick-map-notes/module.json | cmp - module.json
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "archive=${ARCHIVE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run automated tests
+        run: |
+          node --check scripts/main.mjs
+          node --test tests/quick-map-notes.test.mjs
+
+      - name: Publish GitHub Release if version is new
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.package.outputs.version }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "${TAG} is already released; not overwriting existing release assets."
+            exit 0
+          fi
+          gh release create "${TAG}" "${ARCHIVE}" \
+            --target main --title "STL Quick Map Notes ${TAG}" \
+            --notes-file CHANGELOG.md

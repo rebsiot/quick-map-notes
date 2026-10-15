@@ -1,0 +1,8 @@
+# Developer and runtime-only files
+.DS_Store
+__pycache__/
+node_modules/
+*.pyc
+storage/
+.build/
+.bootstrap/
