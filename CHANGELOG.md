@@ -1,5 +1,16 @@
 # Release Notes
 
+## v0.1.1 — 2026-10-15
+
+- **Changed:** Moved the single **Quick Map Note** button from Journal Notes to the primary **Token Controls** (person icon) toolbar, for quicker access during normal GM work.
+- **Unchanged:** Clicking the button arms one map click, followed by the same Note/Journal creation dialog, permissions, icon upload/tint and size choices. The action remains GM-only.
+- **Preserved:** No world data migration; existing Notes/Journals and module persistent image storage remain untouched. No duplicate button left in the Journal Notes tools.
+- **Install/upgrade:** Use the stable GitHub manifest URL in the README and Foundry's Update Modules function, or install the complete v0.1.1 ZIP. Back up your world and preserve existing persistent icon storage before manually replacing modules.
+- **Rollback:** Disable/restore the previous module version; native Notes/Journals persist. Restore world snapshots only if you need to undo world document edits.
+- **Automated tests:** Syntax + 13 Node mock tests passed; release workflow separately validates the ZIP.
+- **Live verification:** Not yet performed on a running Foundry v14 client.
+- **Known limitations:** Native Note/Journal visibility and upload behavior remain subject to live Foundry verification.
+
 ## v0.1.0 — 2026-10-15
 
 - **Added:** One-click placement workflow under native Journal Notes controls, with cancel via Escape.

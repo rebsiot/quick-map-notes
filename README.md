@@ -1,10 +1,10 @@
-# STL Quick Map Notes v0.1.0
+# STL Quick Map Notes v0.1.1
 
 **Target:** Foundry VTT v14 on Ubuntu; WoD20 `worldofdarkness` compatible because this tool is system-independent. **Status:** syntax and mock tested only; not installed or live-tested in the user's world.
 
 ## Purpose
 
-One new tool under the **Journal Notes** (bookmark) scene controls. Click **Quick Map Note**, click a point in the Scene, and use one dialog to create a native map Note linked to a newly created native Journal Entry. Choose its player permissions, icon, uploaded image, icon tint, icon size, and fog visibility. Default is GM-only.
+One new tool under the primary **Token Controls** (person icon, first toolbar) in the Scene Controls. Click **Quick Map Note**, click a point in the Scene, and use one dialog to create a native map Note linked to a newly created native Journal Entry. Choose its player permissions, icon, uploaded image, icon tint, icon size, and fog visibility. Default is GM-only.
 
 ## Install or update from GitHub (recommended)
 
@@ -13,14 +13,14 @@ One new tool under the **Journal Notes** (bookmark) scene controls. Click **Quic
 `https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json`
 
 Source code: https://github.com/rebsiot/quick-map-notes  
-Versioned module ZIP: https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/dist/stl-quick-map-notes-v0.1.0.zip
+Versioned module ZIP: https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/dist/stl-quick-map-notes-v0.1.1.zip
 
 1. Back up the Foundry world. Preserve the module's `storage/` folder if it exists before replacing any module directory.
 2. In Foundry **Add-on Modules > Install Module**, paste the manifest URL and install.
 3. Enable **STL Quick Map Notes** in the intended world, and reload the browser.
 4. For later updates, use Foundry's module update mechanism: the stable manifest always points to the current versioned ZIP.
 
-**This v0.1.0 release has mock/syntax tests only; verify permissions and uploads live before campaign use.** The GitHub repository is public; do not commit campaign Journal contents, private notes, licensed art, uploaded files or persistent storage.
+**This v0.1.1 release has mock/syntax tests only; verify permissions and uploads live before campaign use.** The GitHub repository is public; do not commit campaign Journal contents, private notes, licensed art, uploaded files or persistent storage.
 
 ## Manual installation
 
@@ -28,7 +28,7 @@ Versioned module ZIP: https://raw.githubusercontent.com/rebsiot/quick-map-notes/
 2. Stop the Foundry server.
 3. Extract the complete folder `stl-quick-map-notes` to `Z:\Data\modules\stl-quick-map-notes`. Ensure `module.json` is **inside that folder**, not nested beneath another folder.
 4. Restart Foundry; enable **STL Quick Map Notes** in the intended world under Manage Modules.
-5. Hard-refresh the Foundry browser. Go to a Scene, select **Journal Notes** (bookmark layer), and click **Quick Map Note** (location-dot icon).
+5. Hard-refresh the Foundry browser. Go to a Scene, select **Token Controls** (person icon at the top of the left Scene Controls), and click **Quick Map Note** (location-dot icon). No need to switch to Journal Notes.
 6. Click the desired point on the Scene; enter a title, optional description, permissions, icon/tint and press **Create Map Note**.
 
 ## Icon choices

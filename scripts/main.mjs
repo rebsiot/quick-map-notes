@@ -1,12 +1,12 @@
 /**
- * STL Quick Map Notes v0.1.0 — Foundry VTT 14, system-agnostic.
+ * STL Quick Map Notes v0.1.1 — Foundry VTT 14, system-agnostic.
  *
  * Deliberately uses native Scene Note and JournalEntry documents. It does not
  * override core notes, Journal permissions, or Scene Library imports.
  */
 
 const MODULE_ID = "stl-quick-map-notes";
-const VERSION = "0.1.0";
+const VERSION = "0.1.1";
 const ICON_DIR = `modules/${MODULE_ID}/icons`;
 
 export const ICONS = Object.freeze([
@@ -432,13 +432,16 @@ if (globalThis.Hooks) {
     });
   });
 
+  // Place the GM action on the primary Token Controls (person icon) toolbar.
+  // Do not duplicate it under Journal Notes: one discoverable placement button.
   Hooks.on("getSceneControlButtons", controls => {
-    if (!game.user?.isGM || !controls?.notes?.tools) return;
-    controls.notes.tools.stlQuickMapNote = {
+    if (!game.user?.isGM || !controls?.tokens?.tools) return;
+    const tools = controls.tokens.tools;
+    tools.stlQuickMapNote = {
       name: "stlQuickMapNote",
       title: "Quick Map Note",
       icon: "fa-solid fa-location-dot",
-      order: Math.max(0, ...Object.values(controls.notes.tools).map(t => Number(t.order) || 0)) + 1,
+      order: Math.max(0, ...Object.values(tools).map(t => Number(t.order) || 0)) + 1,
       button: true,
       visible: true,
       onChange: () => armPlacement()

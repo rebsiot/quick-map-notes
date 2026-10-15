@@ -76,19 +76,30 @@ const baseForm = ()=>({
   iconSize:'40',tint:'#edab12',applyTint:true,globallyVisible:false
 });
 
-test('Foundry 14 hook registers one GM-only button on native Notes controls',()=>{
+test('Foundry 14 hook registers one GM-only button on primary Token Controls, not Journal Notes',()=>{
   assert.equal(typeof listeners.get('init'),'function');
   listeners.get('init')();
-  const controls={notes:{tools:{select:{order:1},create:{order:2}}}};
+  const controls={
+    tokens:{tools:{select:{order:1},target:{order:2}}},
+    notes:{tools:{select:{order:1},create:{order:2}}}
+  };
   listeners.get('getSceneControlButtons')(controls);
-  assert.equal(controls.notes.tools.stlQuickMapNote.button,true);
-  assert.equal(controls.notes.tools.stlQuickMapNote.order,3);
-  assert.equal(controls.notes.tools.stlQuickMapNote.visible,true);
+  assert.equal(controls.tokens.tools.stlQuickMapNote.button,true);
+  assert.equal(controls.tokens.tools.stlQuickMapNote.order,3);
+  assert.equal(controls.tokens.tools.stlQuickMapNote.visible,true);
+  assert.equal(controls.tokens.tools.stlQuickMapNote.title,'Quick Map Note');
+  assert.equal(controls.notes.tools.stlQuickMapNote,undefined);
   game.user.isGM=false;
-  const controls2={notes:{tools:{select:{order:1}}}};
+  const controls2={tokens:{tools:{select:{order:1}}},notes:{tools:{select:{order:1}}}};
   listeners.get('getSceneControlButtons')(controls2);
-  assert.equal(controls2.notes.tools.stlQuickMapNote,undefined);
+  assert.equal(controls2.tokens.tools.stlQuickMapNote,undefined);
   game.user.isGM=true;
+});
+
+test('control hook tolerates unavailable Token Controls without altering Journal Notes',()=>{
+  const controls={notes:{tools:{select:{order:1}}}};
+  listeners.get('getSceneControlButtons')(controls);
+  assert.deepEqual(Object.keys(controls.notes.tools),['select']);
 });
 
 test('GM-only, limited, observer and selected player ownership',()=>{
@@ -211,15 +222,15 @@ test('quick tool arms next scene click, Escape cancels, and click presents icon/
   canvas.canvasCoordinatesFromClient=point=>point;
   let receivedDialog=null;
   foundry.applications.api.DialogV2.input=async config=>{receivedDialog=config;return null;};
-  const controls={notes:{tools:{select:{order:0}}}};
+  const controls={tokens:{tools:{select:{order:0}}},notes:{tools:{select:{order:0}}}};
   listeners.get('getSceneControlButtons')(controls);
-  controls.notes.tools.stlQuickMapNote.onChange();
+  controls.tokens.tools.stlQuickMapNote.onChange();
   assert.equal(board.style.cursor,'crosshair');
   assert.equal(boardEvents.has('pointerdown'),true);
   docEvents.get('keydown')({key:'Escape',preventDefault(){},stopPropagation(){}});
   assert.equal(board.style.cursor,'default');
   assert.equal(boardEvents.has('pointerdown'),false);
-  controls.notes.tools.stlQuickMapNote.onChange();
+  controls.tokens.tools.stlQuickMapNote.onChange();
   const point={button:0,clientX:35,clientY:90,preventDefault(){},stopImmediatePropagation(){}};
   boardEvents.get('pointerdown')(point);
   await new Promise(setImmediate);
