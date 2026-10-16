@@ -79,7 +79,7 @@ globalThis.JournalEntry={
 globalThis.ui={notifications:{info(){},error(){},warn(){}}};
 globalThis.canvas={scene,ready:true,dimensions:{sceneRect:{x:0,y:0,width:500,height:500}}};
 
-const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal,canReadPlayerMapJournal} = await import('../scripts/main.mjs');
+const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal,canReadPlayerMapJournal,tutorialSlides,isTutorialDismissed,dismissQuickMapTutorial,showQuickMapTutorial} = await import('../scripts/main.mjs');
 
 const baseForm = ()=>({
   title:'Old Warehouse',description:'Possible <danger> & clues',
@@ -250,6 +250,7 @@ test('quick tool arms next scene click, Escape cancels, and click presents icon/
   assert.equal(receivedDialog.window.title,'Quick Map Note');
   assert.match(receivedDialog.content.innerHTML,/Upload image/);
   assert.match(receivedDialog.content.innerHTML,/Icon tint/);
+  assert.match(receivedDialog.content.innerHTML,/id="stl-qmn-show-tutorial"/);
   assert.match(receivedDialog.content.innerHTML,/Everyone sees the pin/);
 });
 
@@ -798,4 +799,113 @@ test('GM rejects a forged player request before creating any folder or Journal',
   assert.equal(createCalls,before);
   assert.equal(folderCreates,0);
   delete bob.query;
+});
+
+
+test('three tutorial screens explain the person toolbar, icon selection, and role-specific permissions',()=>{
+  const player=tutorialSlides(false),gmSteps=tutorialSlides(true);
+  assert.equal(player.length,3);
+  assert.equal(gmSteps.length,3);
+  assert.match(player[0].body,/person icon/);
+  assert.match(player[1].body,/color and size/);
+  assert.match(player[2].body,/Personal/);
+  assert.match(player[2].body,/Shared with Party/);
+  assert.match(player[2].body,/GM must be connected/);
+  assert.match(player[2].body,/not the Journal's Add Page/);
+  assert.doesNotMatch(player[2].body,/GM Only/);
+  assert.match(gmSteps[2].body,/GM Only/);
+  assert.match(gmSteps[2].body,/Party Map Notes/);
+});
+
+test('first world login runs tutorial; final Dont show again persists only for that User',async()=>{
+  const oldUser=game.user,oldWait=foundry.applications.api.DialogV2.wait;
+  const flags=new Map(), calls=[];
+  const loggedIn={id:'tutorial-alice',isGM:false,
+    getFlag(scope,key){return flags.get(`${scope}:${key}`);},
+    async setFlag(scope,key,value){flags.set(`${scope}:${key}`,value);}
+  };
+  game.user=loggedIn;
+  const replies=['next','next','dismiss'];
+  foundry.applications.api.DialogV2.wait=async cfg=>{calls.push(cfg);return replies.shift();};
+  try {
+    assert.equal(typeof listeners.get('ready'),'function');
+    listeners.get('ready')();
+    await new Promise(setImmediate);
+    assert.equal(calls.length,3);
+    assert.match(calls[0].content,/Step 1 of 3/);
+    assert.equal(calls[0].buttons.at(-1).action,'next');
+    assert.equal(calls.at(-1).buttons.at(-1).label,"Don't show again");
+    assert.equal(flags.get('stl-quick-map-notes:tutorialDismissed'),true);
+    assert.equal(isTutorialDismissed(loggedIn),true);
+    listeners.get('ready')();
+    await new Promise(setImmediate);
+    assert.equal(calls.length,3,'dismissal suppresses later logins');
+  } finally {game.user=oldUser;foundry.applications.api.DialogV2.wait=oldWait;}
+});
+
+test('closing the first-login guide without dismissal does not store a preference',async()=>{
+  const oldUser=game.user,oldWait=foundry.applications.api.DialogV2.wait;
+  let writes=0,opens=0;
+  const account={id:'tutorial-bob',isGM:false,getFlag(){return null;},async setFlag(){writes++;}};
+  game.user=account;
+  foundry.applications.api.DialogV2.wait=async()=>{opens++;return null;};
+  try {
+    assert.equal(await showQuickMapTutorial(),false);
+    assert.equal(await showQuickMapTutorial(),false);
+    assert.equal(opens,2);
+    assert.equal(writes,0);
+    assert.equal(isTutorialDismissed(account),false);
+  } finally {game.user=oldUser;foundry.applications.api.DialogV2.wait=oldWait;}
+});
+
+test('back navigation and manual replay work after Dont show again',async()=>{
+  const oldUser=game.user,oldWait=foundry.applications.api.DialogV2.wait;
+  const flags=new Map([['stl-quick-map-notes:tutorialDismissed',true]]);
+  const user={id:'tutorial-charlie',isGM:true,
+    getFlag(s,k){return flags.get(`${s}:${k}`);},
+    async setFlag(s,k,v){flags.set(`${s}:${k}`,v);}
+  };
+  game.user=user;
+  const actions=['next','back','next','next','later'], visited=[];
+  foundry.applications.api.DialogV2.wait=async cfg=>{visited.push(cfg.content);return actions.shift();};
+  try {
+    assert.equal(await showQuickMapTutorial(),false,'normally suppressed');
+    assert.equal(await showQuickMapTutorial({force:true}),false,'manual replay can close without changing preference');
+    assert.deepEqual(visited.map(x=>/Step (\d) of 3/.exec(x)?.[1]),['1','2','1','2','3']);
+    assert.equal(isTutorialDismissed(user),true);
+  }finally{game.user=oldUser;foundry.applications.api.DialogV2.wait=oldWait;}
+});
+
+test('tutorial preference fallback is per-user on same browser if User flags cannot be saved',async()=>{
+  const oldUser=game.user;
+  const first={id:'tutorial-local-1',isGM:false,getFlag(){return null;},async setFlag(){throw Error('denied');}};
+  const second={id:'tutorial-local-2',isGM:false,getFlag(){return null;},async setFlag(){throw Error('denied');}};
+  try {
+    game.user=first;
+    assert.equal(await dismissQuickMapTutorial(first),'client');
+    assert.equal(isTutorialDismissed(first),true);
+    assert.equal(isTutorialDismissed(second),false);
+    const pref=game.settings.get('stl-quick-map-notes','tutorialDismissedUsers');
+    assert.deepEqual(pref,{[first.id]:true});
+    await dismissQuickMapTutorial(second);
+    assert.deepEqual(game.settings.get('stl-quick-map-notes','tutorialDismissedUsers'),{
+      [first.id]:true,[second.id]:true
+    });
+  }finally{game.user=oldUser;}
+});
+
+test('two simultaneous guide requests share one dialog and do not open duplicates',async()=>{
+  const oldUser=game.user,oldWait=foundry.applications.api.DialogV2.wait;
+  game.user={id:'tutorial-parallel',isGM:false,getFlag(){return false;}};
+  let release, openings=0;
+  foundry.applications.api.DialogV2.wait=()=>{openings++;return new Promise(resolve=>{release=resolve;});};
+  try {
+    const first=showQuickMapTutorial(), second=showQuickMapTutorial({force:true});
+    assert.strictEqual(first,second);
+    assert.equal(openings,1);
+    release('later');
+    assert.equal(await first,false);
+    await new Promise(setImmediate);
+    assert.equal(openings,1);
+  }finally{game.user=oldUser;foundry.applications.api.DialogV2.wait=oldWait;}
 });

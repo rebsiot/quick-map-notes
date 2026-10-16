@@ -1,4 +1,4 @@
-# STL Quick Map Notes v0.1.6
+# STL Quick Map Notes v0.1.7
 
 **Foundry VTT:** v14 (system independent; intended for the St. Louis M20/V20 world)  
 **Module ID:** `stl-quick-map-notes`  
@@ -11,7 +11,7 @@
 `https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json`
 
 **Source:** https://github.com/rebsiot/quick-map-notes  
-**Release:** https://github.com/rebsiot/quick-map-notes/releases/tag/v0.1.6
+**Release:** https://github.com/rebsiot/quick-map-notes/releases/tag/v0.1.7
 
 1. Back up your **world**, especially Scenes, Notes, Journals, and ownership settings. When manually replacing files, also preserve persistent uploaded image storage.
 2. In Foundry Setup → **Add-on Modules**, choose **Update Modules** (if already installed), or **Install Module** and paste the manifest URL.
@@ -21,7 +21,19 @@
 
 **Manual ZIP installation:** Stop Foundry, extract the complete `stl-quick-map-notes` folder to `Z:\Data\modules\stl-quick-map-notes` (so `module.json` is immediately inside), restart, enable the module and reload. Do **not** delete existing world data or the module's persistent storage.
 
-## Player workflow — v0.1.6
+## First-login Quick Tutorial (v0.1.7)
+
+On the first world login **after enabling v0.1.7**, each Foundry user is shown a brief **three-step Quick Map Notes tutorial**. The tutorial explains:
+
+1. **Where to click:** Token Controls (person icon) > Quick Map Note > click the Scene.
+2. **How to customize:** enter a title and description, choose/upload an icon, and set tint and size.
+3. **Access and storage:** players choose Personal or Shared with Party. The tutorial reminds them that each map uses one Journal with a Page per note, and that a GM must be online for player creation. GM users instead see their GM visibility and Journal-linking workflow.
+
+The last screen offers **Don't show again**. This choice is saved on that user's Foundry User document as `flags.stl-quick-map-notes.tutorialDismissed=true`; it follows that account across browsers in the same world. When user flag writes are not permitted, the module saves a per-account *client-side* fallback (only on that browser), instead of repeatedly showing the guide in that client. The fallback does not synchronize across devices.
+
+Using **Not now**, **Close**, or the dialog's X does *not* dismiss the tutorial permanently; it will be offered again at the next login. Users can always reopen it with the small **Quick tutorial** link at the top of the Quick Map Note creation dialog, even after dismissing it. No pop-up approval, extra permission gate, or new world Journal is created for onboarding.
+
+## Player workflow — v0.1.7
 
 **Adding another page:** Click **Quick Map Note** under Token Controls (person icon), click the map and save. This asks the connected GM to append a Page to the same map Journal. Players are **Observers on the parent Journal**, so Foundry's native **Add Page** control is intentionally unavailable; page creation through this module does not require Journal OWNER permissions. Each author owns only their own Page.
 

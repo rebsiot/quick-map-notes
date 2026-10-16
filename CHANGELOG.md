@@ -1,5 +1,14 @@
 # Release Notes
 
+## v0.1.7 - 2026-10-16
+
+- **Added:** First-login three-screen Quick Map Notes tutorial for each user, with player- and GM-specific instructions. Covers Token Controls placement, icon/tint/upload, map Journal Pages and private/party visibility.
+- **Added:** Final **Don't show again** action; stores the preference on the user's native Foundry User flag. If User flags are not writable, falls back to a per-user browser setting. Close/Not now does not permanently suppress the guide.
+- **Added:** A small **Quick tutorial** link in the note-creation dialog reopens the guide even after dismissal. Avoids cluttering primary Token Controls with a second toolbar button.
+- **Preserved:** Native Journal/Scene Note data, player Page ownership, GM-mediated creation, map Journal grouping, user-created assets and all module IDs/flags. No migration of world content.
+- **Testing:** 48 Node mock tests and syntax check; ZIP/package verification; GitHub Actions release validation. Foundry v14 UI behavior and user-flag writes for real player accounts are still unverified.
+- **Upgrade/rollback:** Back up the world and persistent icon storage. Update using the stable manifest; existing notes and saved user tutorial preferences remain intact. To roll back, restore v0.1.6 module files; no world-note migration was performed.
+
 ## v0.1.6 — 2026-10-15
 
 - **Fixed:** On a subsequent player map note, the existing Scene Journal lookup no longer rejects valid native Observer permissions simply because they were granted per player rather than as the Journal default. An explicit GM Owner entry is also recognized as safe. This fixes the v0.1.5 red toast `The map Journal permissions changed` in these cases.

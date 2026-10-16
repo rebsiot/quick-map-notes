@@ -23,3 +23,13 @@
 .stl-quick-map-notes .stl-qmn-color-row input[type=color] { height: 2rem; width: 4rem; padding: 0; }
 .stl-quick-map-notes .stl-qmn-check { display: flex; align-items: center; gap: .4rem; }
 .stl-quick-map-notes [hidden] { display: none !important; }
+
+/* Compact tutorial and secondary replay action; inherits the active Foundry theme. */
+.stl-quick-map-notes .stl-qmn-guide-link { display: flex; justify-content: flex-end; margin-bottom: .4rem; }
+.stl-quick-map-notes .stl-qmn-guide-link button { background: transparent; border: 0; box-shadow: none; padding: .15rem .3rem; font-size: .8rem; text-decoration: underline; cursor: pointer; }
+.stl-qmn-tutorial .window-content { max-height: 65vh; overflow-y: auto; }
+.stl-qmn-tutorial .stl-qmn-tour { line-height: 1.45; padding: .15rem .4rem; }
+.stl-qmn-tutorial .stl-qmn-tour-progress { font-size: .75rem; opacity: .75; margin-bottom: .4rem; }
+.stl-qmn-tutorial .stl-qmn-tour h3 { margin: 0 0 .65rem; }
+.stl-qmn-tutorial .stl-qmn-tour p { margin: 0 0 .75rem; }
+.stl-qmn-tutorial .stl-qmn-tour-footnote { font-size: .78rem; opacity: .76; }

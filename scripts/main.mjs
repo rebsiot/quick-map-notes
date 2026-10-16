@@ -1,12 +1,12 @@
 /**
- * STL Quick Map Notes v0.1.6 — Foundry VTT 14, system-agnostic.
+ * STL Quick Map Notes v0.1.7 — Foundry VTT 14, system-agnostic.
  *
  * Deliberately uses native Scene Note and JournalEntry documents. It does not
  * override core notes, Journal permissions, or Scene Library imports.
  */
 
 const MODULE_ID = "stl-quick-map-notes";
-const VERSION = "0.1.6";
+const VERSION = "0.1.7";
 const ICON_DIR = `modules/${MODULE_ID}/icons`;
 
 export const ICONS = Object.freeze([
@@ -37,6 +37,8 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_PLAYER_FILE_SIZE = 512 * 1024;
 const PLAYER_QUERY = `${MODULE_ID}.createPlayerNote`;
 const VERIFY_QUERY = `${MODULE_ID}.verifyPlayerNote`;
+const TUTORIAL_FLAG = "tutorialDismissed";
+const TUTORIAL_LOCAL_SETTING = "tutorialDismissedUsers";
 const PLAYER_ROOT_FOLDER = "Party Map Notes";
 const PLAYER_SCOPES = Object.freeze({personal:"Personal", party:"Shared with Party"});
 const pendingPlayerRequests = new Map();
@@ -46,6 +48,7 @@ const playerNoteQueues = new Map();
 let playerFolderQueue = Promise.resolve();
 
 let armedPlacement = null;
+let activeTutorial = null;
 
 /** Escape the content of a Journal page, not rich-text or Markdown. */
 export function escapeHtml(raw) {
@@ -390,6 +393,125 @@ function playerUsers() {
   return Array.from(game.users ?? []).filter(user => !user.isGM);
 }
 
+/** Keep the guide short; no world data or Journal content is read or modified. */
+export function tutorialSlides(isGM = Boolean(game.user?.isGM)) {
+  const steps = [
+    {
+      title: "Place a map note",
+      body: `<p>Open a Scene, select the <strong>person icon (Token Controls)</strong> on the left,
+        and click <strong>Quick Map Note</strong> (the map pin). Then click the map where the note belongs.</p>
+        <p>Press <strong>Escape</strong> to cancel before placing a note.</p>`
+    },
+    {
+      title: "Write it and choose an icon",
+      body: `<p>Give the note a <strong>title</strong> and a short <strong>description</strong>.
+        Pick a built-in icon or browse/upload your own, then set its <strong>color and size</strong>.</p>
+        <p><strong>Show through fog</strong> changes map visibility, not who can read a private note.</p>`
+    }
+  ];
+  if (isGM) steps.push({
+    title: "Choose who can read it",
+    body: `<p>For GM notes, choose <strong>GM Only</strong>, pin visibility, readable, or individual player permissions.
+      You can also link an existing permitted campaign Journal.</p>
+      <p>Player notes are grouped under <strong>Party Map Notes</strong>, one Journal per Scene and one Page per note.
+      The GM can always edit or remove them.</p>`
+  });
+  else steps.push({
+    title: "Personal or shared notes",
+    body: `<p>Choose <strong>Personal</strong> for a page intended only for you and the GM, or
+      <strong>Shared with Party</strong> for one everyone can read.</p>
+      <p>Each map has a Journal in <strong>Party Map Notes</strong>. Your note is a Page inside that Journal.
+      To add another Page, use the <strong>Quick Map Note</strong> tool, not the Journal's Add Page button.</p>
+      <p>A <strong>GM must be connected</strong> for players to create notes.</p>`
+  });
+  return steps;
+}
+
+/** A world User flag follows that account across devices. Local client fallback is
+ * per-user so different player accounts sharing a browser stay independent.
+ */
+export function isTutorialDismissed(user = game.user) {
+  if (!user?.id) return false;
+  try { if (user.getFlag?.(MODULE_ID, TUTORIAL_FLAG) === true) return true; }
+  catch (error) { console.warn(`[${MODULE_ID}] Could not read tutorial preference`, error); }
+  try {
+    const local = game.settings.get(MODULE_ID, TUTORIAL_LOCAL_SETTING);
+    return Boolean(local && typeof local === "object" && local[user.id] === true);
+  } catch { return false; }
+}
+
+/** Only clicking the final Don't show again action persists dismissal. */
+export async function dismissQuickMapTutorial(user = game.user) {
+  if (!user?.id) throw new Error("No logged-in user for tutorial preference.");
+  try {
+    if (typeof user.setFlag !== "function") throw new Error("User flags unavailable");
+    await user.setFlag(MODULE_ID, TUTORIAL_FLAG, true);
+    return "user";
+  } catch (error) {
+    console.warn(`[${MODULE_ID}] User flag unavailable; remembering tutorial on this browser`, error);
+    const current = game.settings.get(MODULE_ID, TUTORIAL_LOCAL_SETTING);
+    const map = current && typeof current === "object" && !Array.isArray(current) ? current : {};
+    await game.settings.set(MODULE_ID, TUTORIAL_LOCAL_SETTING, {...map, [user.id]: true});
+    return "client";
+  }
+}
+
+/** Non-modal, three-screen onboarding shown at the next world login for each
+ * user who has not dismissed it. Reopening the guide never clears dismissal.
+ */
+export function showQuickMapTutorial({force = false} = {}) {
+  if (activeTutorial) return activeTutorial;
+  const user = game.user;
+  if (!user?.id || (!force && isTutorialDismissed(user))) return Promise.resolve(false);
+  const DialogV2 = foundry.applications.api.DialogV2;
+  if (typeof DialogV2?.wait !== "function") return Promise.resolve(false);
+  const steps = tutorialSlides(Boolean(user.isGM));
+  const process = async () => {
+    let index = 0;
+    while (index >= 0 && index < steps.length) {
+      const step = steps[index];
+      const finalStep = index === steps.length - 1;
+      const buttons = [
+        ...(index > 0 ? [{action:"back", label:"Back", icon:"fa-solid fa-chevron-left"}] : []),
+        {action:"later", label:finalStep ? "Close" : "Not now"},
+        ...(finalStep
+          ? [{action:"dismiss", label:"Don't show again", icon:"fa-solid fa-check", default:true}]
+          : [{action:"next", label:"Next", icon:"fa-solid fa-chevron-right", default:true}])
+      ];
+      const action = await DialogV2.wait({
+        window:{title:"Quick Map Notes - Quick Tutorial", icon:"fa-solid fa-map-pin"},
+        classes:["stl-qmn-tutorial"],
+        position:{width:460},
+        modal:false,
+        rejectClose:false,
+        content:`<section class="stl-qmn-tour">
+          <div class="stl-qmn-tour-progress">Step ${index + 1} of ${steps.length}</div>
+          <h3>${step.title}</h3>${step.body}
+          ${finalStep ? '<p class="stl-qmn-tour-footnote">You can reopen this guide from the Quick Map Note dialog.</p>' : ''}
+          </section>`,
+        buttons
+      });
+      if (action === "back") { index--; continue; }
+      if (action === "next") { index++; continue; }
+      if (action === "dismiss") {
+        try { await dismissQuickMapTutorial(user); }
+        catch (error) {
+          console.warn(`[${MODULE_ID}] Tutorial preference could not be saved`, error);
+          ui.notifications.warn("Quick Map Notes: Tutorial preference could not be saved. The guide may appear next login.");
+          return false;
+        }
+        return true;
+      }
+      return false; // Closing, Escape, or Not now does not save the preference.
+    }
+    return false;
+  };
+  const result = process();
+  activeTutorial = result;
+  void result.finally(() => { if (activeTutorial === result) activeTutorial = null; }).catch(() => {});
+  return result;
+}
+
 function buildDialogContent() {
   const storedIcon = game.settings.get(MODULE_ID, "lastIcon");
   const storedTint = hexColor(game.settings.get(MODULE_ID, "lastTint"));
@@ -411,6 +533,8 @@ function buildDialogContent() {
     </div>`).join("");
 
   return `<div class="stl-qmn-form">
+    <div class="stl-qmn-guide-link"><button type="button" id="stl-qmn-show-tutorial"
+      title="Open the Quick Map Notes tutorial"><i class="fa-solid fa-circle-question"></i> Quick tutorial</button></div>
     <div class="stl-qmn-grid">
       <label class="stl-qmn-field stl-qmn-full"><span>Title / map label</span>
         <input type="text" name="title" maxlength="120" placeholder="e.g. Old Warehouse" required autofocus></label>
@@ -486,6 +610,12 @@ function wireDialog(dialog, state) {
   const journalSelect = $("#stl-qmn-journal");
   const titleInput = $("[name=title]");
   const visibility = $("#stl-qmn-visibility");
+  $("#stl-qmn-show-tutorial")?.addEventListener("click", () => {
+    void showQuickMapTutorial({force:true}).catch(error => {
+      console.error(`[${MODULE_ID}] Could not open tutorial`, error);
+      ui.notifications.error("Quick Map Notes: Could not open the tutorial.");
+    });
+  });
 
   function previewIcon(path) {
     if (state.previewUrl) {
@@ -921,6 +1051,15 @@ if (globalThis.Hooks) {
     });
     game.settings.register(MODULE_ID, "lastTint", {
       scope: "client", config: false, type: String, default: "#FFFFFF"
+    });
+    game.settings.register(MODULE_ID, TUTORIAL_LOCAL_SETTING, {
+      scope:"client", config:false, type:Object, default:{}
+    });
+  });
+
+  Hooks.once("ready", () => {
+    void showQuickMapTutorial().catch(error => {
+      console.error(`[${MODULE_ID}] Could not start tutorial`, error);
     });
   });
 

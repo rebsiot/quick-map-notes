@@ -1,13 +1,13 @@
-# STL Quick Map Notes v0.1.6 — Test Report
+# STL Quick Map Notes v0.1.7 — Test Report
 
-**Release date:** 2026-10-15  
+**Release date:** 2026-10-16  
 **Target:** Foundry VTT v14, native Scene Notes / JournalEntry / JournalEntryPage  
 **Evidence:** Automated mock/syntax and package integrity only. Not verified live on a Foundry v14 server.
 
 ## Local and CI checks
 
 - `node --check scripts/main.mjs` — passed.
-- `node --test tests/quick-map-notes.test.mjs` — **42 passed, 0 failed**.
+- `node --test tests/quick-map-notes.test.mjs` — **48 passed, 0 failed**.
 - ZIP built with Foundry's expected root `stl-quick-map-notes/module.json` and intact icons, JS, docs and tests; verified ZIP CRC and manifest version/URL.
 
 ## Behaviors covered by mock tests
@@ -22,9 +22,18 @@
 - Unsafe parent permissions still block new writes (non-GM OWNER, requester without Observer, or Shared with Party when another player cannot see the parent). Moved Journals still block instead of silently changing folder/permission settings. Failed map pin creation leaves the new Page for review.
 - Existing v0.1.4 documents and their flags are never migrated, rewritten or deleted.
 
+## First-login tutorial tests (v0.1.7)
+
+- Tested player- and GM-specific tutorial text, Token Controls and note storage instructions.
+- Simulated first login and 3-step Next navigation; only the final Don't show again action persists a native User flag.
+- Checked suppression on subsequent logins for the same user; verified replay via the forced guide option and Back navigation.
+- Tested closing without dismissal, a non-writable User flag with a client-per-user fallback, and multiple simultaneous attempts to open a tutorial.
+- Checked note creation dialog includes the secondary Quick tutorial link.
+- **Not live verified:** actual v14 DialogV2 rendering/interaction, real player's User.setFlag permission, and correct positioning next to other Foundry first-login windows.
+
 ## Required live verification (GM + Alice + Bob)
 
-1. Back up the **world** and module persistent icon storage; upgrade to v0.1.6 and refresh all clients.
+1. Back up the **world** and module persistent icon storage; upgrade to v0.1.7 and refresh all clients.
 2. Alice creates a **Personal** note on Maryland Heights; confirm `Party Map Notes > Maryland Heights > [page]` and correct pin/page link. Bob must see **neither the private Page nor pin/title**; GM can read/edit.
 3. From Alice's Observer account, use **Quick Map Note** again on the same Scene; confirm it adds a second Page and no red "permissions changed" error. The native Journal Add Page control may remain unavailable (expected). Then Bob creates a **Shared with Party** note on the same Scene. Confirm only **one** `Maryland Heights` Journal; Alice can read Bob's page but cannot edit; Bob can edit it. Alice can still edit only her own private Page, not the Journal itself.
 4. Alice creates a note on a second Scene; it creates a distinct Journal named after that Scene. Old `Personal` and `Shared with Party` Journals and notes remain untouched.
@@ -35,4 +44,4 @@
 
 ## Rollback
 
-Restore module v0.1.5 source/ZIP without deleting world documents or persistent icon storage. Rolling back program code does **not** revert new Journals/Pages; restore matching pre-update world backup if a complete data rollback is required.
+Restore module v0.1.6 source/ZIP without deleting world documents or persistent icon storage. Rolling back program code does **not** revert new Journals/Pages; restore matching pre-update world backup if a complete data rollback is required.
