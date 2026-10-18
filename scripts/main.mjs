@@ -1,12 +1,12 @@
 /**
- * AFT Quick Map Notes v0.1.9 — Foundry VTT 14, system-agnostic.
+ * AFT Quick Map Notes v0.1.10 — Foundry VTT 14, system-agnostic.
  *
  * Deliberately uses native Scene Note and JournalEntry documents. It does not
  * override core notes, Journal permissions, or Scene Library imports.
  */
 
 const MODULE_ID = "stl-quick-map-notes";
-const VERSION = "0.1.9";
+const VERSION = "0.1.10";
 const ICON_DIR = `modules/${MODULE_ID}/icons`;
 
 export const ICONS = Object.freeze([
@@ -414,14 +414,15 @@ export function tutorialSlides(isGM = Boolean(game.user?.isGM)) {
     body: `<p>For GM notes, choose <strong>GM Only</strong>, pin visibility, readable, or individual player permissions.
       You can also link an existing permitted campaign Journal.</p>
       <p>Player notes are grouped under <strong>Party Map Notes</strong>, one Journal per Scene and one Page per note.
-      The GM can always edit or remove them.</p>`
+      The GM can always edit or remove them. The <strong>Find / Manage Quick Notes</strong> list
+      pans to pins, moves selected tokens and lets the GM delete a pin without deleting its Page.</p>`
   });
   else steps.push({
     title: "Personal or shared notes",
     body: `<p>Choose <strong>Personal</strong> for a page intended only for you and the GM, or
       <strong>Shared with Party</strong> for one everyone can read.</p>
       <p>Each map has a Journal in <strong>Party Map Notes</strong>. Your note is a Page inside that Journal.
-      To add another Page, use <strong>Place Quick Note</strong>, not the Journal's Add Page button. Use <strong>Find Quick Note</strong> to pan to visible notes and optionally relocate selected tokens.</p>
+      To add another Page, use <strong>Place Quick Note</strong>, not the Journal's Add Page button. Use <strong>Find / Manage Quick Notes</strong> at the top of Token Controls to list visible pins, pan, and optionally relocate selected tokens.</p>
       <p>A <strong>GM must be connected</strong> for players to create notes.</p>`
   });
   return steps;
@@ -999,14 +1000,25 @@ async function showCreationDialog(scene, at) {
 export function listVisibleSceneNotes(sceneCanvas = globalThis.canvas, user = game.user) {
   if (!sceneCanvas?.ready || !sceneCanvas.scene?.id || !user) return [];
   const result = [], seen = new Set();
-  for (const note of sceneCanvas.notes?.placeables ?? []) {
+  const drawn = Array.from(sceneCanvas.notes?.placeables ?? []);
+  // GMs must also see saved Scene Notes whose canvas placeables are not drawn
+  // (for example, when changing layers or after a Scene refresh).
+  if (user.isGM) {
+    const drawnIds = new Set(drawn.map(note => note?.document?.id));
+    for (const doc of sceneCanvas.scene.notes ?? []) {
+      if (doc?.id && !drawnIds.has(doc.id)) drawn.push({document:doc});
+    }
+  }
+  for (const note of drawn) {
     const doc = note?.document;
     const id = String(doc?.id ?? "");
     if (!id || seen.has(id) || note.isPreview || !Number.isFinite(doc.x) || !Number.isFinite(doc.y)) continue;
     if (doc.parent?.id && doc.parent.id !== sceneCanvas.scene.id) continue;
+    // Reject a stale canvas placeable after its native Scene Note was deleted.
+    if (sceneCanvas.scene.notes?.get && !sceneCanvas.scene.notes.get(id)) continue;
     const entry = note.entry ?? game.journal?.get?.(doc.entryId);
     if (!user.isGM) {
-      if (note.isVisible !== true) continue; // Includes native token-vision/fog checks.
+      if (note.isVisible !== true) continue; // Native fog and vision checks.
       if (!entry?.testUserPermission?.(user, "LIMITED")) continue;
       if (doc.pageId) {
         const page = note.page ?? entry.pages?.get?.(doc.pageId) ??
@@ -1022,23 +1034,29 @@ export function listVisibleSceneNotes(sceneCanvas = globalThis.canvas, user = ga
     a.id.localeCompare(b.id));
 }
 
-/** Build a searchable list. User-written names are escaped and never used as HTML. */
-export function findQuickNoteHtml(notes, tokenCount = 0) {
+/** The management dialog opens even for an empty Scene, with a Refresh button. */
+export function findQuickNoteHtml(notes, tokenCount = 0, canDelete = false) {
   return `<div class="stl-qmn-finder-body">
-    <label class="stl-qmn-find-search"><span>Find a note on this Scene</span>
+    <label class="stl-qmn-find-search"><span>Map notes on this Scene</span>
       <input type="search" placeholder="Search note titles" aria-label="Search map notes" autocomplete="off"></label>
-    <p class="stl-qmn-find-hint">${notes.length} accessible note${notes.length === 1 ? "" : "s"}.
-      Select <strong>Pan</strong> to find a pin, or <strong>Move selected</strong> to relocate your currently selected tokens.
-      Moving tokens is direct relocation; it does not follow paths, walls or collision rules.</p>
-    <p class="stl-qmn-find-hint">Selected tokens: <strong>${tokenCount}</strong>. Select tokens before opening Find Quick Note.</p>
+    <div class="stl-qmn-find-actions">
+      <span>${notes.length} accessible note${notes.length === 1 ? "" : "s"}.</span>
+      <button type="button" data-note-action="refresh" title="Reload map notes and selected token count">Refresh list</button>
+    </div>
+    <p class="stl-qmn-find-hint">Pan moves your view. Move selected relocates tokens you control as a group
+      (no pathfinding or collision checks). ${canDelete ? "Delete Pin removes the Scene pin only; its Journal Page remains." : ""}</p>
+    <p class="stl-qmn-find-hint">Selected tokens: <strong>${tokenCount}</strong>.
+      Select tokens before opening this panel or select them while it is open, then click Refresh list.</p>
     <div class="stl-qmn-find-results" role="list">
-      ${notes.map(n => `<div class="stl-qmn-find-row" role="listitem" data-find-row data-search="${escapeHtml((n.name + " " + n.journalName).toLowerCase())}">
+      ${notes.length ? notes.map(n => `<div class="stl-qmn-find-row" role="listitem" data-find-row data-search="${escapeHtml((n.name + " " + n.journalName).toLowerCase())}">
         <div class="stl-qmn-find-label"><strong>${escapeHtml(n.name)}</strong>
           ${n.journalName ? `<small>${escapeHtml(n.journalName)}</small>` : ""}</div>
         <button type="button" data-note-action="pan" data-note-id="${escapeHtml(n.id)}" aria-label="Pan to ${escapeHtml(n.name)}">Pan</button>
         <button type="button" data-note-action="move" data-note-id="${escapeHtml(n.id)}" ${tokenCount ? "" : "disabled"}
           aria-label="Move selected tokens to ${escapeHtml(n.name)}">Move selected</button>
-      </div>`).join("")}
+        ${canDelete ? `<button type="button" class="stl-qmn-delete-pin" data-note-action="delete" data-note-id="${escapeHtml(n.id)}"
+          aria-label="Delete map pin ${escapeHtml(n.name)}">Delete Pin</button>` : ""}
+      </div>`).join("") : '<p class="stl-qmn-find-zero">No accessible map notes found. The list can be refreshed without closing this window.</p>'}
     </div>
     <p class="stl-qmn-find-empty" hidden>No matching map notes.</p>
   </div>`;
@@ -1057,8 +1075,15 @@ function resolveFindNote(noteId, sceneId, sceneCanvas = globalThis.canvas, user 
 export async function panToQuickNote(noteId, {sceneCanvas = globalThis.canvas,
   user = game.user, sceneId = sceneCanvas?.scene?.id} = {}) {
   const {note} = resolveFindNote(noteId, sceneId, sceneCanvas, user);
-  if (typeof sceneCanvas.notes?.panToNote !== "function") throw new Error("Map note panning is not available.");
-  await sceneCanvas.notes.panToNote(note, {duration:450});
+  if (note.isVisible === undefined && typeof sceneCanvas.animatePan === "function") {
+    await sceneCanvas.animatePan({x:note.document.x,y:note.document.y,duration:450});
+  } else if (typeof sceneCanvas.notes?.panToNote === "function") {
+    await sceneCanvas.notes.panToNote(note,{duration:450});
+  } else if (typeof sceneCanvas.animatePan === "function") {
+    await sceneCanvas.animatePan({x:note.document.x,y:note.document.y,duration:450});
+  } else {
+    throw new Error("Map note panning is not available.");
+  }
   return note;
 }
 
@@ -1132,8 +1157,34 @@ export async function moveSelectedTokensToQuickNote(noteId, {sceneCanvas = globa
   if (!Array.isArray(changed) || changed.length !== updates.length) {
     throw new Error("Token move result was incomplete. Check the Scene before trying again.");
   }
-  await sceneCanvas.notes.panToNote(note,{duration:450});
+  await panToQuickNote(noteId,{sceneCanvas,user,sceneId});
   return changed.length;
+}
+
+/** Delete only the Scene pin, never its linked native Journal Entry or Page. */
+export async function deleteQuickNotePin(noteId, {sceneCanvas = globalThis.canvas,
+  user = game.user, sceneId = sceneCanvas?.scene?.id,
+  confirm = foundry.applications.api.DialogV2.confirm} = {}) {
+  if (!user?.isGM) throw new Error("Only a GM can delete Scene map pins.");
+  const item = resolveFindNote(noteId,sceneId,sceneCanvas,user);
+  const approved = await confirm({
+    window:{title:"Delete Quick Map Pin"},
+    content:`<p>Delete the map pin <strong>${escapeHtml(item.name)}</strong>?</p>
+      <p>The linked Journal Entry and Page will be kept.</p>`,
+    modal:true, rejectClose:false,
+    yes:{label:"Delete Pin",icon:"fa-solid fa-trash"},
+    no:{label:"Cancel"}
+  });
+  if (approved !== true) return false;
+  resolveFindNote(noteId,sceneId,sceneCanvas,user); // Re-check after the confirmation.
+  if (typeof sceneCanvas.scene.deleteEmbeddedDocuments !== "function") {
+    throw new Error("Scene Note deletion is unavailable.");
+  }
+  const deleted = await sceneCanvas.scene.deleteEmbeddedDocuments("Note",[noteId]);
+  if (!Array.isArray(deleted) || deleted.length !== 1 || deleted[0]?.id !== noteId) {
+    throw new Error("The Scene did not confirm pin deletion. Check the map before retrying.");
+  }
+  return true;
 }
 
 /** A real Foundry DialogV2; controls stay visible while panning among notes. */
@@ -1143,52 +1194,65 @@ export async function showFindQuickNotes() {
     ui.notifications.warn("Open a Scene before finding map notes.");
     return false;
   }
-  const notes=listVisibleSceneNotes(sceneCanvas,user);
-  if (!notes.length) {
-    ui.notifications.info("No accessible map notes are visible on this Scene.");
-    return false;
-  }
   const sceneId=sceneCanvas.scene.id;
-  const tokenCount=sceneCanvas.tokens?.controlled?.length ?? 0;
   const content=document.createElement("div");
-  content.innerHTML=findQuickNoteHtml(notes,tokenCount);
+  content.innerHTML=findQuickNoteHtml(listVisibleSceneNotes(sceneCanvas,user),
+    sceneCanvas.tokens?.controlled?.length ?? 0,user?.isGM === true);
   return foundry.applications.api.DialogV2.wait({
-    window:{title:"Find Quick Note",icon:"fa-solid fa-magnifying-glass",resizable:true},
+    window:{title:"Quick Map Notes - This Scene",icon:"fa-solid fa-list",resizable:true},
     classes:["stl-qmn-finder"],
-    position:{width:600},
+    position:{width:720},
     content,
     buttons:[{action:"close",label:"Close",default:true}],
     rejectClose:false,
     render: (_event,dialog) => {
       const root=dialog.element;
-      const search=root.querySelector(".stl-qmn-find-search input");
-      search?.addEventListener("input",()=>{
+      const refresh = () => {
+        if (!sceneCanvas.ready || sceneCanvas.scene?.id !== sceneId) {
+          throw new Error("The Scene changed. Close and reopen Map Notes on the desired Scene.");
+        }
+        const body=root.querySelector(".stl-qmn-finder-body");
+        if (body) body.outerHTML=findQuickNoteHtml(listVisibleSceneNotes(sceneCanvas,user),
+          sceneCanvas.tokens?.controlled?.length ?? 0,user?.isGM === true);
+      };
+      const filter = (search) => {
         let count=0;
         for(const row of root.querySelectorAll("[data-find-row]")) {
           const match=String(row.dataset.search??"").includes(search.value.toLowerCase().trim());
           row.hidden=!match;
-          if(match)count++;
+          if(match) count++;
         }
         const empty=root.querySelector(".stl-qmn-find-empty");
-        if(empty) empty.hidden=count>0;
+        if(empty) empty.hidden=count>0 || root.querySelectorAll("[data-find-row]").length===0;
+      };
+      // Delegation remains bound after Refresh or Delete rebuilds the note list.
+      root.addEventListener("input", event => {
+        if(event.target?.matches?.(".stl-qmn-find-search input")) filter(event.target);
       });
-      for(const button of root.querySelectorAll("button[data-note-action]")) {
-        button.addEventListener("click",async()=>{
-          if(button.disabled) return;
-          button.disabled=true;
-          try {
-            if(button.dataset.noteAction==="pan") {
-              await panToQuickNote(button.dataset.noteId,{sceneCanvas,user,sceneId});
-            } else if(button.dataset.noteAction==="move") {
-              const moved=await moveSelectedTokensToQuickNote(button.dataset.noteId,{sceneCanvas,user,sceneId});
-              ui.notifications.info(`Moved ${moved} selected token${moved===1?"":"s"} near the map note.`);
+      root.addEventListener("click", async event => {
+        const button=event.target?.closest?.("button[data-note-action]");
+        if(!button || !root.contains(button) || button.disabled) return;
+        button.disabled=true;
+        try {
+          if(button.dataset.noteAction==="refresh") {
+            refresh();
+          } else if(button.dataset.noteAction==="pan") {
+            await panToQuickNote(button.dataset.noteId,{sceneCanvas,user,sceneId});
+          } else if(button.dataset.noteAction==="move") {
+            const moved=await moveSelectedTokensToQuickNote(button.dataset.noteId,{sceneCanvas,user,sceneId});
+            ui.notifications.info(`Moved ${moved} selected token${moved===1?"":"s"} near the map note.`);
+          } else if(button.dataset.noteAction==="delete") {
+            const deleted=await deleteQuickNotePin(button.dataset.noteId,{sceneCanvas,user,sceneId});
+            if(deleted) {
+              ui.notifications.info("Map pin deleted. Its linked Journal Page was kept.");
+              refresh();
             }
-          }catch(error){
-            console.warn(`[${MODULE_ID}] Finder action failed`,error);
-            ui.notifications.error(`Quick Map Notes: ${error.message}`);
-          }finally{button.disabled=false;}
-        });
-      }
+          }
+        }catch(error){
+          console.warn(`[${MODULE_ID}] Map Notes action failed`,error);
+          ui.notifications.error(`Quick Map Notes: ${error.message}`);
+        }finally{button.disabled=false;}
+      });
     }
   });
 }
@@ -1272,21 +1336,24 @@ if (globalThis.Hooks) {
   Hooks.on("getSceneControlButtons", controls => {
     if (!game.user || !controls?.tokens?.tools) return;
     const tools = controls.tokens.tools;
-    const order = Math.max(0, ...Object.values(tools).map(t => Number(t.order) || 0)) + 1;
-    tools.stlQuickMapNote = {
-      name: "stlQuickMapNote", title: "Place Quick Note",
-      icon: "fa-solid fa-location-dot", order,
-      button: true, visible: true,
-      onChange: () => armPlacement()
-    };
+    // Put the management button FIRST in the Token palette. v0.1.9 appended
+    // it to the very bottom, which can leave it out of view on short screens.
+    // Signed integer order values are sorted numerically by v14 SceneControls.
+    const first = Math.min(0, ...Object.values(tools).map(t => Number(t.order)).filter(Number.isFinite)) - 2;
     tools.stlFindQuickNote = {
-      name: "stlFindQuickNote", title: "Find Quick Note",
-      icon: "fa-solid fa-magnifying-glass", order:order+1,
+      name: "stlFindQuickNote", title: "Find / Manage Quick Notes",
+      icon: "fa-solid fa-list", order:first,
       button: true, visible: true,
       onChange: () => { void showFindQuickNotes().catch(error => {
-        console.error(`[${MODULE_ID}] Cannot open Find Quick Note`,error);
+        console.error(`[${MODULE_ID}] Cannot open Quick Map Notes manager`,error);
         ui.notifications.error(`Quick Map Notes: ${error.message}`);
       }); }
+    };
+    tools.stlQuickMapNote = {
+      name: "stlQuickMapNote", title: "Place Quick Note",
+      icon: "fa-solid fa-location-dot", order:first+1,
+      button: true, visible: true,
+      onChange: () => armPlacement()
     };
   });
 

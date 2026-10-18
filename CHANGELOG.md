@@ -1,5 +1,14 @@
 # Release Notes
 
+## v0.1.10 - 2026-10-18
+
+- **Fixed:** Find / Manage Quick Notes is now the first tool under Token Controls (person icon), not buried at the bottom. Opening it always shows the current Scene's management window, including when there are no visible notes.
+- **Added:** Refresh list, including updated token selection counts. GMs can see saved Scene Notes even when the note canvas layer has not drawn their placeables.
+- **Added:** GM-only **Delete Pin** on each row. Each deletion requires an explicit confirmation and removes only the native Scene pin. The linked Journal and Page remain intact. Players cannot delete pins through this window.
+- **Preserved:** Pan and Move selected remain separate actions, using existing permissions. No changes to existing Scene Notes, Journal IDs/Pages, privacy flags, uploaded icons, or module ID on installation.
+- **Update and rollback:** Back up the world and persistent icon storage. Update via the existing Foundry manifest, then refresh clients. Restore the full v0.1.9 module ZIP to roll back code; restoring a matching world backup is necessary to reverse actual token or pin deletions made after the upgrade.
+- **Testing:** 65/65 Node mock tests plus ZIP manifest/content validation (no live server). Actual v14 manager opening, visibility, deletion, token movement and GM-plus-two-player privacy still require a live check. Packaged beta, not live-certified.
+
 ## v0.1.9 - 2026-10-18
 
 - **Added:** Two adjacent Token Controls tools: **Place Quick Note** (the prior creation workflow) and **Find Quick Note** (search native visible map notes on the current Scene and pan to a pin).

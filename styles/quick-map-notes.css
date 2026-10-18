@@ -34,7 +34,7 @@
 .stl-qmn-tutorial .stl-qmn-tour p { margin: 0 0 .75rem; }
 .stl-qmn-tutorial .stl-qmn-tour-footnote { font-size: .78rem; opacity: .76; }
 
-/* Find Quick Note: native button pair, searchable per-Scene note rows. */
+/* Find/Manage Quick Notes: per-Scene list, live refresh, GM deletion. */
 .stl-qmn-finder .window-content { max-height: 68vh; overflow-y:auto; }
 .stl-qmn-finder .stl-qmn-finder-body { padding:.3rem; }
 .stl-qmn-finder .stl-qmn-find-search { display:flex; flex-direction:column; gap:.3rem; font-weight:600; }
@@ -47,3 +47,9 @@
 .stl-qmn-finder .stl-qmn-find-row button { flex:0 0 auto; padding:.3rem .45rem; }
 .stl-qmn-finder [hidden] { display:none !important; }
 @media (max-width:510px) { .stl-qmn-finder .stl-qmn-find-row { flex-wrap:wrap; } }
+
+.stl-qmn-finder .stl-qmn-find-actions { display:flex; align-items:center; justify-content:space-between; gap:.6rem; margin:.55rem 0; }
+.stl-qmn-finder .stl-qmn-find-actions button { flex:0 0 auto; padding:.3rem .55rem; }
+.stl-qmn-finder .stl-qmn-find-zero { padding:.65rem; margin:.35rem 0; font-style:italic; opacity:.85; }
+.stl-qmn-finder .stl-qmn-delete-pin { border-color:var(--color-border-highlight, #a66); }
+@media (max-width:720px) { .stl-qmn-finder .stl-qmn-find-row { flex-wrap:wrap; } }

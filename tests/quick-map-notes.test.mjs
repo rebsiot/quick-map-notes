@@ -79,7 +79,7 @@ globalThis.JournalEntry={
 globalThis.ui={notifications:{info(){},error(){},warn(){}}};
 globalThis.canvas={scene,ready:true,dimensions:{sceneRect:{x:0,y:0,width:500,height:500}}};
 
-const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal,canReadPlayerMapJournal,tutorialSlides,isTutorialDismissed,dismissQuickMapTutorial,showQuickMapTutorial,listVisibleSceneNotes,findQuickNoteHtml,panToQuickNote,planSelectedTokensToNote,moveSelectedTokensToQuickNote,showFindQuickNotes} = await import('../scripts/main.mjs');
+const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal,canReadPlayerMapJournal,tutorialSlides,isTutorialDismissed,dismissQuickMapTutorial,showQuickMapTutorial,listVisibleSceneNotes,findQuickNoteHtml,panToQuickNote,planSelectedTokensToNote,moveSelectedTokensToQuickNote,deleteQuickNotePin,showFindQuickNotes} = await import('../scripts/main.mjs');
 
 const baseForm = ()=>({
   title:'Old Warehouse',description:'Possible <danger> & clues',
@@ -87,7 +87,7 @@ const baseForm = ()=>({
   iconSize:'40',tint:'#edab12',applyTint:true,globallyVisible:false
 });
 
-test('Foundry 14 hook registers adjacent Place/Find buttons for players and GMs in Token Controls',()=>{
+test('Foundry 14 Token Controls keeps Place and makes Find/Manage the first, discoverable tool',()=>{
   assert.equal(typeof listeners.get('init'),'function');
   listeners.get('init')();
   const controls={
@@ -96,11 +96,12 @@ test('Foundry 14 hook registers adjacent Place/Find buttons for players and GMs 
   };
   listeners.get('getSceneControlButtons')(controls);
   assert.equal(controls.tokens.tools.stlQuickMapNote.button,true);
-  assert.equal(controls.tokens.tools.stlQuickMapNote.order,3);
+  assert.equal(controls.tokens.tools.stlQuickMapNote.order,-1);
   assert.equal(controls.tokens.tools.stlQuickMapNote.visible,true);
   assert.equal(controls.tokens.tools.stlQuickMapNote.title,'Place Quick Note');
-  assert.equal(controls.tokens.tools.stlFindQuickNote.title,'Find Quick Note');
-  assert.equal(controls.tokens.tools.stlFindQuickNote.order,4);
+  assert.equal(controls.tokens.tools.stlFindQuickNote.title,'Find / Manage Quick Notes');
+  assert.equal(controls.tokens.tools.stlFindQuickNote.order,-2);
+  assert.ok(controls.tokens.tools.stlFindQuickNote.order<controls.tokens.tools.select.order);
   assert.equal(controls.tokens.tools.stlFindQuickNote.button,true);
   assert.equal(controls.notes.tools.stlQuickMapNote,undefined);
   assert.equal(controls.notes.tools.stlFindQuickNote,undefined);
@@ -921,9 +922,9 @@ test('v0.1.9 module manager title retains AFT prefix and existing module ID', as
   const manifest = JSON.parse(await readFile(new URL('../module.json', import.meta.url), 'utf8'));
   assert.equal(manifest.id, 'stl-quick-map-notes');
   assert.equal(manifest.title, 'AFT Quick Map Notes');
-  assert.equal(manifest.version, '0.1.9');
+  assert.equal(manifest.version, '0.1.10');
   assert.equal(manifest.manifest, 'https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json');
-  assert.match(manifest.download, /\/dist\/stl-quick-map-notes-v0\.1\.9\.zip$/);
+  assert.match(manifest.download, /\/dist\/stl-quick-map-notes-v0\.1\.10\.zip$/);
   assert.deepEqual(manifest.esmodules, ['scripts/main.mjs']);
 });
 
@@ -1071,7 +1072,25 @@ test('Finder rejects changed Scene, missing note, partial DB updates and edit de
   await assert.rejects(moveSelectedTokensToQuickNote('z',{sceneCanvas:f.c,user:f.user}),/cannot move token/);
 });
 
-test('Finder dialog builds searchable note list and wires separate pan and move interactions',async()=>{
+test('Find/Manage dialog always opens and stays accessible even with no visible notes',async()=>{
+  const f=finderFixture(),oldCanvas=globalThis.canvas,oldWait=foundry.applications.api.DialogV2.wait;
+  const oldDocument=globalThis.document,oldUser=game.user;
+  f.c.notes.placeables=[];
+  globalThis.canvas=f.c;game.user=f.user;
+  globalThis.document={createElement(){return {innerHTML:''};}};
+  let captured=null;
+  foundry.applications.api.DialogV2.wait=async config=>{captured=config;return 'close';};
+  try {
+    assert.equal(await showFindQuickNotes(),'close');
+    assert.equal(captured.window.title,'Quick Map Notes - This Scene');
+    assert.match(captured.content.innerHTML,/No accessible map notes found/);
+    assert.match(captured.content.innerHTML,/data-note-action="refresh"/);
+    assert.doesNotMatch(captured.content.innerHTML,/data-note-action="delete"/);
+  }finally{globalThis.canvas=oldCanvas;globalThis.document=oldDocument;
+    game.user=oldUser;foundry.applications.api.DialogV2.wait=oldWait;}
+});
+
+test('Find/Manage dialog delegates search, pan, move and refresh actions',async()=>{
   const f=finderFixture();
   const oldCanvas=globalThis.canvas,oldWait=foundry.applications.api.DialogV2.wait;
   const oldDocument=globalThis.document,oldUser=game.user;
@@ -1083,31 +1102,131 @@ test('Finder dialog builds searchable note list and wires separate pan and move 
   foundry.applications.api.DialogV2.wait=async config=>{captured=config;return 'close';};
   try {
     assert.equal(await showFindQuickNotes(),'close');
-    assert.equal(captured.window.title,'Find Quick Note');
+    assert.equal(captured.window.title,'Quick Map Notes - This Scene');
     assert.match(captured.content.innerHTML,/data-note-action="pan"/);
     assert.match(captured.content.innerHTML,/data-note-action="move"/);
-    assert.doesNotMatch(captured.content.innerHTML,/Private &lt;Secret&gt;|Fog-covered title/);
+    assert.doesNotMatch(captured.content.innerHTML,/Private &lt;Secret&gt;|Fog-covered title|data-note-action="delete"/);
     const callbackStore=new Map();
-    const fakeButton=(action,id)=>({dataset:{noteAction:action,noteId:id},disabled:false,
-      addEventListener(name,fn){callbackStore.set(`${action}:${id}`,fn);}});
-    const panButton=fakeButton('pan','z'),moveButton=fakeButton('move','a');
-    const search={value:'',addEventListener(_,fn){this.search=fn;}};
     const row1={dataset:{search:'warehouse'},hidden:false};
     const row2={dataset:{search:'meeting'},hidden:false};
     const empty={hidden:true};
-    const root={querySelector(q){return q.includes('search input')?search:empty;},
-      querySelectorAll(q){return q==='[data-find-row]'?[row1,row2]:[panButton,moveButton];}};
+    let refreshedMarkup='';
+    const body={set outerHTML(html){refreshedMarkup=html;}};
+    const root={contains(){return true;},
+      addEventListener(name,fn){callbackStore.set(name,fn);},
+      querySelector(q){return q==='.stl-qmn-find-empty'?empty:body;},
+      querySelectorAll(q){return q==='[data-find-row]'?[row1,row2]:[];}};
     captured.render(null,{element:root});
-    search.value='warehouse';search.search();
+    const search={value:'warehouse',matches:q=>q.includes('search input')};
+    callbackStore.get('input')({target:search});
     assert.equal(row1.hidden,false);assert.equal(row2.hidden,true);assert.equal(empty.hidden,true);
-    search.value='missing';search.search();
+    search.value='missing';callbackStore.get('input')({target:search});
     assert.equal(empty.hidden,false);
-    await callbackStore.get('pan:z')();
+    const click=async(action,id)=>{
+      const button={dataset:{noteAction:action,noteId:id},disabled:false};
+      await callbackStore.get('click')({target:{closest:()=>button}});
+      assert.equal(button.disabled,false);
+    };
+    await click('pan','z');
     assert.equal(f.pans[0].id,'z');
     assert.equal(f.moves.length,0);
-    await callbackStore.get('move:a')();
+    await click('move','a');
     assert.equal(f.moves.length,1);
     assert.equal(f.pans.at(-1).id,'a');
+    await click('refresh');
+    assert.match(refreshedMarkup,/data-note-action="pan"/);
+    assert.match(refreshedMarkup,/Selected tokens: <strong>1/);
   }finally{globalThis.canvas=oldCanvas;globalThis.document=oldDocument;
     game.user=oldUser;foundry.applications.api.DialogV2.wait=oldWait;}
+});
+
+test('GM list includes saved Scene Notes even when their canvas placeable has not drawn',async()=>{
+  const f=finderFixture({user:{id:'g-1',isGM:true}});
+  const saved={id:'unrendered',text:'Saved private pin',x:246,y:345,parent:{id:'scene-finder'},entryId:'entry1'};
+  f.c.scene.notes=[saved];
+  const panned=[];
+  f.c.animatePan=async opts=>panned.push(opts);
+  const result=listVisibleSceneNotes(f.c,f.user);
+  assert.ok(result.find(r=>r.id==='unrendered'));
+  await panToQuickNote('unrendered',{sceneCanvas:f.c,user:f.user});
+  assert.deepEqual(panned,[{x:246,y:345,duration:450}]);
+  assert.equal(listVisibleSceneNotes(f.c,{isGM:false,id:'player'}).some(n=>n.id==='unrendered'),false);
+});
+
+test('Delete Pin is GM-only, asks confirmation, preserves linked Journal and checks result',async()=>{
+  const f=finderFixture({user:{id:'g-1',isGM:true}});
+  const deleted=[];
+  const pinned=f.notes[0].document;
+  f.c.scene.deleteEmbeddedDocuments=async (kind,ids)=>{deleted.push({kind,ids});return [pinned];};
+  let prompt='';
+  const confirmation=async data=>{prompt=data.content;return false;};
+  assert.equal(await deleteQuickNotePin('z',{sceneCanvas:f.c,user:f.user,confirm:confirmation}),false);
+  assert.deepEqual(deleted,[]);
+  assert.match(prompt,/Journal Entry and Page will be kept/);
+  assert.match(findQuickNoteHtml(listVisibleSceneNotes(f.c,f.user),1,true),/data-note-action="delete"/);
+  assert.doesNotMatch(findQuickNoteHtml(listVisibleSceneNotes(f.c,{isGM:false,id:'p'}),1,false),/data-note-action="delete"/);
+  assert.equal(await deleteQuickNotePin('z',{sceneCanvas:f.c,user:f.user,confirm:async()=>true}),true);
+  assert.deepEqual(deleted,[{kind:'Note',ids:['z']}]);
+  await assert.rejects(deleteQuickNotePin('z',{sceneCanvas:f.c,user:{isGM:false},confirm:async()=>true}),/Only a GM/);
+  assert.deepEqual(deleted,[{kind:'Note',ids:['z']}]);
+  await assert.rejects(deleteQuickNotePin('private',{sceneCanvas:f.c,user:f.user,sceneId:'wrong',confirm:async()=>true}),/Scene changed/);
+  f.c.scene.deleteEmbeddedDocuments=async()=>[];
+  await assert.rejects(deleteQuickNotePin('z',{sceneCanvas:f.c,user:f.user,confirm:async()=>true}),/did not confirm/);
+});
+
+test('Delete confirmation escapes note title and stale note is not deleted',async()=>{
+  const f=finderFixture({user:{isGM:true}});
+  let prompt='';
+  let deletes=0;
+  f.c.scene.deleteEmbeddedDocuments=async()=>{deletes++;return [];};
+  await assert.rejects(deleteQuickNotePin('z',{sceneCanvas:f.c,user:f.user,confirm:async data=>{
+    prompt=data.content;
+    f.c.notes.placeables.splice(0,1);
+    return true;
+  }}),/no longer visible/);
+  assert.match(prompt,/Warehouse &amp; &lt;Co&gt;/);
+  assert.equal(deletes,0);
+});
+
+test('GM finder content exposes Delete Pin and its action refreshes the list',async()=>{
+  const f=finderFixture({user:{id:'g-1',isGM:true}});
+  const oldCanvas=globalThis.canvas,oldWait=foundry.applications.api.DialogV2.wait;
+  const oldConfirm=foundry.applications.api.DialogV2.confirm;
+  const oldDocument=globalThis.document,oldUser=game.user;
+  globalThis.canvas=f.c;game.user=f.user;
+  let captured=null,deleteCount=0,html='';
+  f.c.scene.deleteEmbeddedDocuments=async(type,ids)=>{
+    deleteCount++;
+    const index=f.notes.findIndex(n=>n.document.id===ids[0]);
+    const note=f.notes.splice(index,1)[0];
+    return [note.document];
+  };
+  foundry.applications.api.DialogV2.wait=async config=>{captured=config;return 'close';};
+  foundry.applications.api.DialogV2.confirm=async()=>true;
+  globalThis.document={createElement(){return {innerHTML:''};}};
+  try {
+    await showFindQuickNotes();
+    assert.match(captured.content.innerHTML,/data-note-action="delete"/);
+    const handlers=new Map();
+    const root={contains(){return true;},addEventListener(name,fn){handlers.set(name,fn);},
+      querySelector(){return {set outerHTML(next){html=next;}}},querySelectorAll(){return [];}};
+    captured.render(null,{element:root});
+    const button={dataset:{noteAction:'delete',noteId:'z'},disabled:false};
+    await handlers.get('click')({target:{closest:()=>button}});
+    assert.equal(deleteCount,1);
+    assert.equal(button.disabled,false);
+    assert.doesNotMatch(html,/Warehouse &amp; &lt;Co&gt;/);
+    assert.match(html,/data-note-action="refresh"/);
+  } finally {globalThis.canvas=oldCanvas;globalThis.document=oldDocument;game.user=oldUser;
+    foundry.applications.api.DialogV2.wait=oldWait;
+    foundry.applications.api.DialogV2.confirm=oldConfirm;}
+});
+
+test('Finder excludes a stale canvas Note when native Scene.notes no longer contains its ID',()=>{
+  const f=finderFixture({user:{isGM:true}});
+  const liveIds=new Set(['z','a']);
+  f.c.scene.notes={get:id=>liveIds.has(id)?{id}:null,[Symbol.iterator]:function*(){}};
+  assert.deepEqual(listVisibleSceneNotes(f.c,f.user).map(n=>n.id),['a','z']);
+  liveIds.delete('z');
+  assert.deepEqual(listVisibleSceneNotes(f.c,f.user).map(n=>n.id),['a']);
 });

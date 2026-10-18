@@ -1,28 +1,30 @@
-# AFT Quick Map Notes v0.1.9 - Test Report
+# AFT Quick Map Notes v0.1.10 - Test Report
 
-**Source baseline:** `rebsiot/quick-map-notes` published v0.1.8, exact commit `b817feea85af37fda3a36b1e732049d8618bb3b3`; local v0.1.8 release ZIP SHA-256 `319e83145b4399e401da07fc6fa963549ea55e03bee792b8d1cc285bedbc06e8` verified. Installed/working live version unknown.
+**Verified baseline:** `rebsiot/quick-map-notes` v0.1.9 at exact commit `036d722548b575202c912597ffc5977c704e97f6`. Local published 55,021-byte ZIP SHA-256 `ed42d98e04d3d1aafcb01bc9f2decf83d1c9407c53d6304d4bc70cc819e380dc`. Current installed live build not accessible.
 
-**Scope:** Add adjacent Place/Find buttons to native Token Controls, an accessible/current-Scene finder using native NotesLayer pan, and explicit selected-token relocation via native Scene update. Preserve the older creation toolbar key, all existing documents, module ID, storage/flags and user preferences. No migration.
+**Scope:** Surface Find/Manage at top of Token Controls, keep manager open with zero notes, provide refresh, add GM-only confirmed Scene pin deletion, and include saved undrawn Scene Notes in GM list. Continue to use native v14 Note/Scene/Journal APIs. No world migration; preserve the module ID `stl-quick-map-notes`.
 
 ## Automated/mock-tested
 
-- `node --check scripts/main.mjs`: passed.
-- `node --test tests/quick-map-notes.test.mjs`: 59/59 tests passed.
-- New tests cover v14 tool ordering; current Scene and visible note filtering; per-Journal and per-Page permissions; title escaping; pan and stale note checks; selected token grouping, snapping, boundary handling, owner/lock checks, and one native Token update only after explicit move; finder dialog event wiring.
-- Complete ZIP archive: `zipfile.testzip`, manifest ID/version/download URL, packaged runtime files and bundled icons; exclude private user data, paid art, credentials and old internal handoff from release ZIP.
-- GitHub Actions/publication verification are separate from local mock testing.
+- `node --check scripts/main.mjs`: to run.
+- `node --test tests/quick-map-notes.test.mjs`: to run.
+- Mock regression coverage: toolbar order, empty manager, search/refresh/pan/move, page privacy, GM saved-Note fallback, GM deletion confirm/cancel, player deletion blocked, HTML escaping and stale requests. Existing creation and tutorial tests retained.
+- Full ZIP CRC, embedded manifest and installation folder, license, icons, CSS and contents: to verify.
 
-## Live Foundry v14 tests - NOT YET RUN
+## Confirmed live
 
-- Confirm both adjacent tools appear under Token Controls in a GM and player client; creation still works.
-- With GM + Alice + Bob, verify the finder hides Alice's Personal pin/title from Bob, honors fog and shows party pages. Reload/reconnect and repeat.
-- Verify searching and panning to near and far native notes on the current Scene, including core Foundry Notes created outside this module.
-- GM selects two Tokens, moves them to a note, confirms relative positions, grid snapping, in-bounds placement and no unexpected side effects. Check that Pan alone does not edit any Token.
-- Player tries a permitted token and one unauthorized token. Unauthorized/mixed selection must fail without movement. Confirm no movement path, walls, collisions or cost checks are implied.
-- Re-test append-to-existing Scene Journal, Page editing and tutorial dismissal.
+**Not tested** on user's Foundry v14 world. User reported v0.1.9 list panel was not visible; the code audit verified that v0.1.9 returned early without opening the window when its note list was empty and placed Find at the bottom of Token Controls. This report does not assume the exact cause of the user's live failure was established.
 
-## Rollback
+## Next live tests
 
-Back up the entire world and module persistent uploads before updating. Restore the published v0.1.8 module ZIP for software rollback. World Token coordinates changed during play, or notes created after updating, are native world state and require normal undo/manual reposition or restoration from a matching world backup; reverting code does not reverse them.
+1. Update a backed-up Foundry world to v0.1.10 and confirm **Find / Manage Quick Notes** is the first tool below the person icon.
+2. Open the manager on a Scene with and without pins. Confirm that both display the window, Refresh list works, and saved notes appear for the GM.
+3. Pan to a saved note, select two tokens and use Move selected; confirm correct permission checks and token formation.
+4. As GM, delete a disposable pin, test Cancel separately, confirm the Journal Entry and Page survive and the deleted pin disappears. The world snapshot allows recovery.
+5. As two distinct player clients, verify Personal/Shared Page visibility, private pin/title redaction, and that players cannot delete pins; repeat after refresh/reconnect.
 
-**Readiness:** S2 packaged beta, not yet confirmed safe live. Publication does not establish installation, world enabled status or permission safety.
+## Backup and rollback
+
+Back up world documents and persistent uploaded images separately. Restore v0.1.9 module code to roll back this release; to undo actual Scene Note deletion or Token moves, restore a matching world backup. No automatic data migrations.
+
+**Status:** S2 packaged beta until real multiplayer tests pass. Publishing is not live deployment.
