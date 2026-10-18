@@ -1,5 +1,14 @@
 # Release Notes
 
+## v0.1.8 - 2026-10-18
+
+- **Changed:** Module Manager now lists the addon as **AFT Quick Map Notes** instead of **STL Quick Map Notes**, making it easier to find alongside other AFT modules.
+- **Documentation:** Player/GM quick starts now lead the README; the detailed permission model and test instructions are in separate documentation. The first-login tutorial remains unchanged.
+- **Preserved:** Module ID `stl-quick-map-notes`, repository, stable manifest, world data and flags, icons, permissions, and all existing note workflows. No automatic migration or change to enabled/disabled state.
+- **Before updating:** Back up the world and module persistent image storage. Use Foundry's module updater, restart or reload as appropriate. Revert to v0.1.7 if needed; restoring older code does not undo world-document edits.
+- **Tests:** Automated/mock and package checks only; GM plus two-player privacy, existing-Scene-Journal and reconnect testing still required in live Foundry v14.
+
+
 ## v0.1.7 - 2026-10-16
 
 - **Added:** First-login three-screen Quick Map Notes tutorial for each user, with player- and GM-specific instructions. Covers Token Controls placement, icon/tint/upload, map Journal Pages and private/party visibility.

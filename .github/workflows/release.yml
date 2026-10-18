@@ -52,6 +52,15 @@ jobs:
             echo "${TAG} is already released; not overwriting existing release assets."
             exit 0
           fi
+          # Publish only this version's notes, not the entire historical CHANGELOG.
+          awk -v version="${VERSION}" '
+            /^## v/ {
+              if (found) exit
+              if (index($0, "## v" version " ") == 1) found = 1
+            }
+            found { print }
+          ' CHANGELOG.md > "${RUNNER_TEMP}/release-notes.md"
+          test -s "${RUNNER_TEMP}/release-notes.md"
           gh release create "${TAG}" "${ARCHIVE}" \
-            --target main --title "STL Quick Map Notes ${TAG}" \
-            --notes-file CHANGELOG.md
+            --target main --title "AFT Quick Map Notes ${TAG}" \
+            --notes-file "${RUNNER_TEMP}/release-notes.md"

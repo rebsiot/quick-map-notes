@@ -1,12 +1,12 @@
 /**
- * STL Quick Map Notes v0.1.7 — Foundry VTT 14, system-agnostic.
+ * AFT Quick Map Notes v0.1.8 — Foundry VTT 14, system-agnostic.
  *
  * Deliberately uses native Scene Note and JournalEntry documents. It does not
  * override core notes, Journal permissions, or Scene Library imports.
  */
 
 const MODULE_ID = "stl-quick-map-notes";
-const VERSION = "0.1.7";
+const VERSION = "0.1.8";
 const ICON_DIR = `modules/${MODULE_ID}/icons`;
 
 export const ICONS = Object.freeze([

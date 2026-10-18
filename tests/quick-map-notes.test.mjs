@@ -909,3 +909,15 @@ test('two simultaneous guide requests share one dialog and do not open duplicate
     assert.equal(openings,1);
   }finally{game.user=oldUser;foundry.applications.api.DialogV2.wait=oldWait;}
 });
+
+
+test('v0.1.8 module manager title uses the AFT prefix while preserving identity and update path', async () => {
+  const {readFile} = await import('node:fs/promises');
+  const manifest = JSON.parse(await readFile(new URL('../module.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.id, 'stl-quick-map-notes');
+  assert.equal(manifest.title, 'AFT Quick Map Notes');
+  assert.equal(manifest.version, '0.1.8');
+  assert.equal(manifest.manifest, 'https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json');
+  assert.match(manifest.download, /\/dist\/stl-quick-map-notes-v0\.1\.8\.zip$/);
+  assert.deepEqual(manifest.esmodules, ['scripts/main.mjs']);
+});
