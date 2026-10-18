@@ -33,3 +33,17 @@
 .stl-qmn-tutorial .stl-qmn-tour h3 { margin: 0 0 .65rem; }
 .stl-qmn-tutorial .stl-qmn-tour p { margin: 0 0 .75rem; }
 .stl-qmn-tutorial .stl-qmn-tour-footnote { font-size: .78rem; opacity: .76; }
+
+/* Find Quick Note: native button pair, searchable per-Scene note rows. */
+.stl-qmn-finder .window-content { max-height: 68vh; overflow-y:auto; }
+.stl-qmn-finder .stl-qmn-finder-body { padding:.3rem; }
+.stl-qmn-finder .stl-qmn-find-search { display:flex; flex-direction:column; gap:.3rem; font-weight:600; }
+.stl-qmn-finder .stl-qmn-find-search input { width:100%; }
+.stl-qmn-finder .stl-qmn-find-hint { font-size:.8rem; opacity:.82; line-height:1.35; margin:.6rem 0; }
+.stl-qmn-finder .stl-qmn-find-results { max-height:48vh; overflow-y:auto; display:flex; flex-direction:column; gap:.3rem; }
+.stl-qmn-finder .stl-qmn-find-row { display:flex; align-items:center; gap:.4rem; padding:.4rem; border:1px solid var(--color-border-light-primary, #666); border-radius:.35rem; }
+.stl-qmn-finder .stl-qmn-find-label { flex:1; display:flex; flex-direction:column; min-width:0; overflow-wrap:anywhere; }
+.stl-qmn-finder .stl-qmn-find-label small { font-size:.76rem; opacity:.75; }
+.stl-qmn-finder .stl-qmn-find-row button { flex:0 0 auto; padding:.3rem .45rem; }
+.stl-qmn-finder [hidden] { display:none !important; }
+@media (max-width:510px) { .stl-qmn-finder .stl-qmn-find-row { flex-wrap:wrap; } }

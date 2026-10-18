@@ -1,16 +1,16 @@
 # Quick Map Notes: Permissions and technical details
 
-The material below describes the v0.1.7 player and GM data model, which is unchanged in v0.1.8. The new release changes the visible module name and documentation, not the permission or note-creation logic. For installation and basic use, see [README](../README.md).
+The material below describes the v0.1.7-v0.1.9 player and GM data model. v0.1.9 adds a finder and optional native token relocation, not new Journal permissions or content migrations. For installation and basic use, see [README](../README.md).
 
 **Beta limitation:** Foundry v14 Journal Page ownership and private pin/title visibility still require a live GM-and-two-player privacy test. Do not rely on Personal notes for sensitive campaign secrets until verified.
 
 ## Player workflow — v0.1.7
 
-**Adding another page:** Click **Quick Map Note** under Token Controls (person icon), click the map and save. This asks the connected GM to append a Page to the same map Journal. Players are **Observers on the parent Journal**, so Foundry's native **Add Page** control is intentionally unavailable; page creation through this module does not require Journal OWNER permissions. Each author owns only their own Page.
+**Adding another page:** Click **Place Quick Note** under Token Controls (person icon), click the map and save. This asks the connected GM to append a Page to the same map Journal. Players are **Observers on the parent Journal**, so Foundry's native **Add Page** control is intentionally unavailable; page creation through this module does not require Journal OWNER permissions. Each author owns only their own Page.
 
 **v0.1.6 permission fix:** Existing map Journals can grant Observer to individual players rather than using default Observer. The module checks effective access (using the native permission API) and accepts GM-specific Owner permissions. It still blocks non-GM OWNER on the parent to protect other players' Personal Pages. For Shared with Party notes, everyone must be able to observe the parent. No ownership grants are automatically modified.
 
-Players have **Quick Map Note** in Token Controls (person icon), just like the GM. They choose **Personal** (only author + GM) or **Shared with Party** (everyone reads; only author + GM edit).
+Players have **Place Quick Note** and **Find Quick Note** in Token Controls (person icon), just like the GM. They choose **Personal** (only author + GM) or **Shared with Party** (everyone reads; only author + GM edit).
 
 **New player map notes use one Journal Entry per Scene.** The Journal is named after the **Scene/map** and placed directly in the existing or lazily created `Party Map Notes` Journal folder. Every placed note becomes a separate **JournalEntryPage** in that map's Journal. Each map pin links to the specific page with its `pageId`, rather than opening a pile of one-note Journals.
 
@@ -71,3 +71,16 @@ python3 tools/build_release.py
 ```
 
 Each version updates `module.json`, changelog, tests, and `dist/stl-quick-map-notes-vX.Y.Z.zip`. Commit source and ZIP together. GitHub Actions checks the ZIP and tests, then publishes a versioned GitHub Release. Keep the **manifest** URL stable. The module's standalone source is separate from Scene Library, Player Actions, Dice and Paradox modules.
+
+## Finder and optional token relocation (v0.1.9)
+
+Foundry v14's Token Controls exposes a flat tool palette, not a nested tool group. The module retains the previous `stlQuickMapNote` toolbar identifier as **Place Quick Note** for compatibility, and adds an adjacent `stlFindQuickNote` tool. No additional scene layer or library is created.
+
+- **Find Quick Note** displays all native Note placeables drawn for the viewed Scene, not solely module-created pins. Duplicate names are allowed; IDs are used for lookup. The list is alphabetical, searchable, and escaped to avoid executable HTML.
+- A player sees an entry only when `Note.isVisible === true`, the linked Journal Entry grants at least LIMITED, and its linked Page (where applicable) separately grants at least LIMITED. If any permission/visibility result is missing, the entry is omitted. This prevents the finder from showing private Page titles solely because the parent Scene Journal is shared. Native Page/pin privacy still requires live multiplayer confirmation.
+- Before **Pan** or **Move selected**, the finder rechecks the active Scene, note existence, and the user's current visibility and permissions. `NotesLayer.panToNote` animates the user's canvas; panning does not alter any world documents.
+- **Move selected** requires that tokens were already selected before opening the finder. It accepts only the locally controlled tokens, rejects any locked or unauthorized token, and performs one native `Scene.updateEmbeddedDocuments("Token", updates)` after validating the entire group. Players cannot use the finder to move tokens they do not have normal native permission to update.
+- A uniform translation preserves the group formation, rounds the translation by whole cells on square grids, and clamps the group inside the current Scene bounds. It does not avoid walls, occupied spaces, hazards, tokens, elevation restrictions, or movement cost: it is an intentional direct relocation. This control is distinct from Pan and never activates by selecting a row.
+- Token positions change only when the user explicitly clicks **Move selected**, which is disabled when the finder opens with no token selection. No token or map-note data migration occurs.
+
+**Required v14 live test:** GM + 2 players on a Scene with party, personal, and GM-only pins; test list title privacy after refresh/reconnect, pan and search, NotesLayer visibility with fog, and selected-token moves for GM and for an authorized player, including unauthorized token refusal, in-bounds snapping and walls/collisions.

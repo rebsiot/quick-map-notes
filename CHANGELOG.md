@@ -1,5 +1,14 @@
 # Release Notes
 
+## v0.1.9 - 2026-10-18
+
+- **Added:** Two adjacent Token Controls tools: **Place Quick Note** (the prior creation workflow) and **Find Quick Note** (search native visible map notes on the current Scene and pan to a pin).
+- **Added:** Optional **Move selected** per note, relocating only the user's selected, permitted tokens as a group. The separate action keeps formation and stays in map bounds; it is direct relocation, not pathfinding or collision avoidance.
+- **Privacy:** Players' lists respect current map-note visibility plus both Journal Entry and Page permissions. Private note titles are excluded when unavailable to the player. No note/permission migration.
+- **Preserved:** AFT title, module ID, Journal Pages, original pin data, icon uploads, user flags, tutorial dismissal, active-GM player-note creation, and native data IDs. No existing-world documents are rewritten by installation.
+- **Upgrade:** Back up the world and persistent icons, update via Foundry's existing manifest, and refresh clients. Restore v0.1.8 for code rollback; restore a world backup to undo token movements or other world edits.
+- **Testing:** 59/59 Node mock tests and package integrity checks passed. Live Foundry v14 tool layout, privacy/vision, pan, and authorized token movement still require GM + two-player testing; release remains a packaged beta.
+
 ## v0.1.8 - 2026-10-18
 
 - **Changed:** Module Manager now lists the addon as **AFT Quick Map Notes** instead of **STL Quick Map Notes**, making it easier to find alongside other AFT modules.

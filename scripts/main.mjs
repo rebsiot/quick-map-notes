@@ -1,12 +1,12 @@
 /**
- * AFT Quick Map Notes v0.1.8 — Foundry VTT 14, system-agnostic.
+ * AFT Quick Map Notes v0.1.9 — Foundry VTT 14, system-agnostic.
  *
  * Deliberately uses native Scene Note and JournalEntry documents. It does not
  * override core notes, Journal permissions, or Scene Library imports.
  */
 
 const MODULE_ID = "stl-quick-map-notes";
-const VERSION = "0.1.8";
+const VERSION = "0.1.9";
 const ICON_DIR = `modules/${MODULE_ID}/icons`;
 
 export const ICONS = Object.freeze([
@@ -399,7 +399,7 @@ export function tutorialSlides(isGM = Boolean(game.user?.isGM)) {
     {
       title: "Place a map note",
       body: `<p>Open a Scene, select the <strong>person icon (Token Controls)</strong> on the left,
-        and click <strong>Quick Map Note</strong> (the map pin). Then click the map where the note belongs.</p>
+        and click <strong>Place Quick Note</strong> (the map pin). Then click the map where the note belongs.</p>
         <p>Press <strong>Escape</strong> to cancel before placing a note.</p>`
     },
     {
@@ -421,7 +421,7 @@ export function tutorialSlides(isGM = Boolean(game.user?.isGM)) {
     body: `<p>Choose <strong>Personal</strong> for a page intended only for you and the GM, or
       <strong>Shared with Party</strong> for one everyone can read.</p>
       <p>Each map has a Journal in <strong>Party Map Notes</strong>. Your note is a Page inside that Journal.
-      To add another Page, use the <strong>Quick Map Note</strong> tool, not the Journal's Add Page button.</p>
+      To add another Page, use <strong>Place Quick Note</strong>, not the Journal's Add Page button. Use <strong>Find Quick Note</strong> to pan to visible notes and optionally relocate selected tokens.</p>
       <p>A <strong>GM must be connected</strong> for players to create notes.</p>`
   });
   return steps;
@@ -990,6 +990,209 @@ async function showCreationDialog(scene, at) {
   }
 }
 
+/**
+ * Find ONLY notes on the current Scene that the current user may actually see.
+ * This must not leak the title of a private Journal Page through the finder,
+ * even when the parent Journal is party-readable. For players, fail closed if
+ * Foundry has not supplied a visibility/permission result yet.
+ */
+export function listVisibleSceneNotes(sceneCanvas = globalThis.canvas, user = game.user) {
+  if (!sceneCanvas?.ready || !sceneCanvas.scene?.id || !user) return [];
+  const result = [], seen = new Set();
+  for (const note of sceneCanvas.notes?.placeables ?? []) {
+    const doc = note?.document;
+    const id = String(doc?.id ?? "");
+    if (!id || seen.has(id) || note.isPreview || !Number.isFinite(doc.x) || !Number.isFinite(doc.y)) continue;
+    if (doc.parent?.id && doc.parent.id !== sceneCanvas.scene.id) continue;
+    const entry = note.entry ?? game.journal?.get?.(doc.entryId);
+    if (!user.isGM) {
+      if (note.isVisible !== true) continue; // Includes native token-vision/fog checks.
+      if (!entry?.testUserPermission?.(user, "LIMITED")) continue;
+      if (doc.pageId) {
+        const page = note.page ?? entry.pages?.get?.(doc.pageId) ??
+          Array.from(entry.pages ?? []).find(p => p.id === doc.pageId);
+        if (!page?.testUserPermission?.(user, "LIMITED")) continue;
+      }
+    }
+    seen.add(id);
+    result.push({id, name:String(doc.text || note.page?.name || entry?.name || "Unnamed Note"),
+      journalName:String(entry?.name || ""), x:doc.x, y:doc.y, note});
+  }
+  return result.sort((a,b) => a.name.localeCompare(b.name, undefined, {numeric:true,sensitivity:"base"}) ||
+    a.id.localeCompare(b.id));
+}
+
+/** Build a searchable list. User-written names are escaped and never used as HTML. */
+export function findQuickNoteHtml(notes, tokenCount = 0) {
+  return `<div class="stl-qmn-finder-body">
+    <label class="stl-qmn-find-search"><span>Find a note on this Scene</span>
+      <input type="search" placeholder="Search note titles" aria-label="Search map notes" autocomplete="off"></label>
+    <p class="stl-qmn-find-hint">${notes.length} accessible note${notes.length === 1 ? "" : "s"}.
+      Select <strong>Pan</strong> to find a pin, or <strong>Move selected</strong> to relocate your currently selected tokens.
+      Moving tokens is direct relocation; it does not follow paths, walls or collision rules.</p>
+    <p class="stl-qmn-find-hint">Selected tokens: <strong>${tokenCount}</strong>. Select tokens before opening Find Quick Note.</p>
+    <div class="stl-qmn-find-results" role="list">
+      ${notes.map(n => `<div class="stl-qmn-find-row" role="listitem" data-find-row data-search="${escapeHtml((n.name + " " + n.journalName).toLowerCase())}">
+        <div class="stl-qmn-find-label"><strong>${escapeHtml(n.name)}</strong>
+          ${n.journalName ? `<small>${escapeHtml(n.journalName)}</small>` : ""}</div>
+        <button type="button" data-note-action="pan" data-note-id="${escapeHtml(n.id)}" aria-label="Pan to ${escapeHtml(n.name)}">Pan</button>
+        <button type="button" data-note-action="move" data-note-id="${escapeHtml(n.id)}" ${tokenCount ? "" : "disabled"}
+          aria-label="Move selected tokens to ${escapeHtml(n.name)}">Move selected</button>
+      </div>`).join("")}
+    </div>
+    <p class="stl-qmn-find-empty" hidden>No matching map notes.</p>
+  </div>`;
+}
+
+/** Re-resolve the note at click time: permissions and Scene can change while the list is open. */
+function resolveFindNote(noteId, sceneId, sceneCanvas = globalThis.canvas, user = game.user) {
+  if (!sceneCanvas?.ready || !sceneCanvas.scene || sceneCanvas.scene.id !== sceneId) {
+    throw new Error("The Scene changed. Open Find Quick Note on the intended map.");
+  }
+  const result = listVisibleSceneNotes(sceneCanvas, user).find(n => n.id === noteId);
+  if (!result) throw new Error("That note is no longer visible or accessible. Reopen the list.");
+  return result;
+}
+
+export async function panToQuickNote(noteId, {sceneCanvas = globalThis.canvas,
+  user = game.user, sceneId = sceneCanvas?.scene?.id} = {}) {
+  const {note} = resolveFindNote(noteId, sceneId, sceneCanvas, user);
+  if (typeof sceneCanvas.notes?.panToNote !== "function") throw new Error("Map note panning is not available.");
+  await sceneCanvas.notes.panToNote(note, {duration:450});
+  return note;
+}
+
+/**
+ * Compute ONE rigid-body translation for the controlled token group. The native
+ * Scene update is permission-checked; this function never creates tokens or
+ * modifies elevation, ownership, vision, or the linked Journals/Notes.
+ * No pathfinding: this is an explicit teleport/relocation command.
+ */
+export function planSelectedTokensToNote(note, {
+  sceneCanvas = globalThis.canvas, user = game.user, tokens = sceneCanvas?.tokens?.controlled ?? []
+} = {}) {
+  if (!user || !sceneCanvas?.ready || !sceneCanvas.scene || !note?.document ||
+      !Number.isFinite(note.document.x) || !Number.isFinite(note.document.y)) {
+    throw new Error("A valid Scene and map note are required.");
+  }
+  if (!Array.isArray(tokens) || !tokens.length) throw new Error("Select one or more tokens before opening Find Quick Note.");
+  const scene = sceneCanvas.scene;
+  const gridW = sceneCanvas.grid?.sizeX || sceneCanvas.grid?.size || sceneCanvas.dimensions?.size || 100;
+  const gridH = sceneCanvas.grid?.sizeY || sceneCanvas.grid?.size || sceneCanvas.dimensions?.size || 100;
+  const positions = tokens.map(token => {
+    const doc = token?.document;
+    if (!doc?.id || (doc.parent?.id && doc.parent.id !== scene.id) ||
+        !Number.isFinite(doc.x) || !Number.isFinite(doc.y)) {
+      throw new Error("Selected tokens must belong to this Scene.");
+    }
+    if (doc.locked) throw new Error(`Token ${doc.name || doc.id} is locked.`);
+    if (!user.isGM && !doc.canUserModify?.(user, "update")) {
+      throw new Error(`You cannot move token ${doc.name || doc.id}.`);
+    }
+    const width = Number(token.w ?? token.bounds?.width ?? Number(doc.width) * gridW);
+    const height = Number(token.h ?? token.bounds?.height ?? Number(doc.height) * gridH);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      throw new Error("A selected token has invalid dimensions.");
+    }
+    return {id:doc.id,x:doc.x,y:doc.y,width,height};
+  });
+  const minX=Math.min(...positions.map(t=>t.x)),minY=Math.min(...positions.map(t=>t.y));
+  const maxX=Math.max(...positions.map(t=>t.x+t.width));
+  const maxY=Math.max(...positions.map(t=>t.y+t.height));
+  const centerX=(minX+maxX)/2, centerY=(minY+maxY)/2;
+  let dx=note.document.x-centerX, dy=note.document.y-centerY;
+  // For square maps, translate in whole cells to preserve tokens already aligned to a grid.
+  if (sceneCanvas.grid?.isSquare && Number.isFinite(gridW) && Number.isFinite(gridH)) {
+    dx=Math.round(dx/gridW)*gridW;
+    dy=Math.round(dy/gridH)*gridH;
+  }
+  const rect = sceneCanvas.dimensions?.sceneRect;
+  if (rect && [rect.x,rect.y,rect.width,rect.height].every(Number.isFinite)) {
+    const minDx=rect.x-minX, maxDx=rect.x+rect.width-maxX;
+    const minDy=rect.y-minY, maxDy=rect.y+rect.height-maxY;
+    if (minDx > maxDx || minDy > maxDy) {
+      throw new Error("The selected token group does not fit inside the Scene bounds.");
+    }
+    // Clamp the whole group rather than scattering or stacking individual tokens.
+    dx=Math.max(minDx,Math.min(maxDx,dx));
+    dy=Math.max(minDy,Math.min(maxDy,dy));
+  }
+  return positions.map(t => ({_id:t.id,x:Math.round(t.x+dx),y:Math.round(t.y+dy)}));
+}
+
+/** Move only the current user's selected/authorized tokens, never other players' tokens. */
+export async function moveSelectedTokensToQuickNote(noteId, {sceneCanvas = globalThis.canvas,
+  user = game.user, sceneId = sceneCanvas?.scene?.id} = {}) {
+  const {note} = resolveFindNote(noteId,sceneId,sceneCanvas,user);
+  const updates=planSelectedTokensToNote(note,{sceneCanvas,user});
+  if (typeof sceneCanvas.scene.updateEmbeddedDocuments !== "function") {
+    throw new Error("Scene token updates are not available.");
+  }
+  const changed=await sceneCanvas.scene.updateEmbeddedDocuments("Token",updates);
+  if (!Array.isArray(changed) || changed.length !== updates.length) {
+    throw new Error("Token move result was incomplete. Check the Scene before trying again.");
+  }
+  await sceneCanvas.notes.panToNote(note,{duration:450});
+  return changed.length;
+}
+
+/** A real Foundry DialogV2; controls stay visible while panning among notes. */
+export async function showFindQuickNotes() {
+  const sceneCanvas=globalThis.canvas, user=game.user;
+  if (!sceneCanvas?.ready || !sceneCanvas.scene) {
+    ui.notifications.warn("Open a Scene before finding map notes.");
+    return false;
+  }
+  const notes=listVisibleSceneNotes(sceneCanvas,user);
+  if (!notes.length) {
+    ui.notifications.info("No accessible map notes are visible on this Scene.");
+    return false;
+  }
+  const sceneId=sceneCanvas.scene.id;
+  const tokenCount=sceneCanvas.tokens?.controlled?.length ?? 0;
+  const content=document.createElement("div");
+  content.innerHTML=findQuickNoteHtml(notes,tokenCount);
+  return foundry.applications.api.DialogV2.wait({
+    window:{title:"Find Quick Note",icon:"fa-solid fa-magnifying-glass",resizable:true},
+    classes:["stl-qmn-finder"],
+    position:{width:600},
+    content,
+    buttons:[{action:"close",label:"Close",default:true}],
+    rejectClose:false,
+    render: (_event,dialog) => {
+      const root=dialog.element;
+      const search=root.querySelector(".stl-qmn-find-search input");
+      search?.addEventListener("input",()=>{
+        let count=0;
+        for(const row of root.querySelectorAll("[data-find-row]")) {
+          const match=String(row.dataset.search??"").includes(search.value.toLowerCase().trim());
+          row.hidden=!match;
+          if(match)count++;
+        }
+        const empty=root.querySelector(".stl-qmn-find-empty");
+        if(empty) empty.hidden=count>0;
+      });
+      for(const button of root.querySelectorAll("button[data-note-action]")) {
+        button.addEventListener("click",async()=>{
+          if(button.disabled) return;
+          button.disabled=true;
+          try {
+            if(button.dataset.noteAction==="pan") {
+              await panToQuickNote(button.dataset.noteId,{sceneCanvas,user,sceneId});
+            } else if(button.dataset.noteAction==="move") {
+              const moved=await moveSelectedTokensToQuickNote(button.dataset.noteId,{sceneCanvas,user,sceneId});
+              ui.notifications.info(`Moved ${moved} selected token${moved===1?"":"s"} near the map note.`);
+            }
+          }catch(error){
+            console.warn(`[${MODULE_ID}] Finder action failed`,error);
+            ui.notifications.error(`Quick Map Notes: ${error.message}`);
+          }finally{button.disabled=false;}
+        });
+      }
+    }
+  });
+}
+
 /** Capture next canvas click before PIXI placeables react; Escape cancels. */
 function armPlacement() {
   if (!game.user) return;
@@ -1063,19 +1266,27 @@ if (globalThis.Hooks) {
     });
   });
 
-  // Give players and GMs the same primary Token Controls (person icon) button.
-  // Do not duplicate it under Journal Notes: one discoverable placement button.
+  // Foundry v14 has native tools but no nested tool menus. Keep the pair
+  // adjacent under primary Token Controls rather than creating a fragile flyout.
+  // Retain the old stlQuickMapNote tool key for compatibility with saved tools.
   Hooks.on("getSceneControlButtons", controls => {
     if (!game.user || !controls?.tokens?.tools) return;
     const tools = controls.tokens.tools;
+    const order = Math.max(0, ...Object.values(tools).map(t => Number(t.order) || 0)) + 1;
     tools.stlQuickMapNote = {
-      name: "stlQuickMapNote",
-      title: "Quick Map Note",
-      icon: "fa-solid fa-location-dot",
-      order: Math.max(0, ...Object.values(tools).map(t => Number(t.order) || 0)) + 1,
-      button: true,
-      visible: true,
+      name: "stlQuickMapNote", title: "Place Quick Note",
+      icon: "fa-solid fa-location-dot", order,
+      button: true, visible: true,
       onChange: () => armPlacement()
+    };
+    tools.stlFindQuickNote = {
+      name: "stlFindQuickNote", title: "Find Quick Note",
+      icon: "fa-solid fa-magnifying-glass", order:order+1,
+      button: true, visible: true,
+      onChange: () => { void showFindQuickNotes().catch(error => {
+        console.error(`[${MODULE_ID}] Cannot open Find Quick Note`,error);
+        ui.notifications.error(`Quick Map Notes: ${error.message}`);
+      }); }
     };
   });
 

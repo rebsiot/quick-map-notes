@@ -79,7 +79,7 @@ globalThis.JournalEntry={
 globalThis.ui={notifications:{info(){},error(){},warn(){}}};
 globalThis.canvas={scene,ready:true,dimensions:{sceneRect:{x:0,y:0,width:500,height:500}}};
 
-const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal,canReadPlayerMapJournal,tutorialSlides,isTutorialDismissed,dismissQuickMapTutorial,showQuickMapTutorial} = await import('../scripts/main.mjs');
+const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal,canReadPlayerMapJournal,tutorialSlides,isTutorialDismissed,dismissQuickMapTutorial,showQuickMapTutorial,listVisibleSceneNotes,findQuickNoteHtml,panToQuickNote,planSelectedTokensToNote,moveSelectedTokensToQuickNote,showFindQuickNotes} = await import('../scripts/main.mjs');
 
 const baseForm = ()=>({
   title:'Old Warehouse',description:'Possible <danger> & clues',
@@ -87,7 +87,7 @@ const baseForm = ()=>({
   iconSize:'40',tint:'#edab12',applyTint:true,globallyVisible:false
 });
 
-test('Foundry 14 hook registers one button for players and GMs in Token Controls, not Journal Notes',()=>{
+test('Foundry 14 hook registers adjacent Place/Find buttons for players and GMs in Token Controls',()=>{
   assert.equal(typeof listeners.get('init'),'function');
   listeners.get('init')();
   const controls={
@@ -98,12 +98,17 @@ test('Foundry 14 hook registers one button for players and GMs in Token Controls
   assert.equal(controls.tokens.tools.stlQuickMapNote.button,true);
   assert.equal(controls.tokens.tools.stlQuickMapNote.order,3);
   assert.equal(controls.tokens.tools.stlQuickMapNote.visible,true);
-  assert.equal(controls.tokens.tools.stlQuickMapNote.title,'Quick Map Note');
+  assert.equal(controls.tokens.tools.stlQuickMapNote.title,'Place Quick Note');
+  assert.equal(controls.tokens.tools.stlFindQuickNote.title,'Find Quick Note');
+  assert.equal(controls.tokens.tools.stlFindQuickNote.order,4);
+  assert.equal(controls.tokens.tools.stlFindQuickNote.button,true);
   assert.equal(controls.notes.tools.stlQuickMapNote,undefined);
+  assert.equal(controls.notes.tools.stlFindQuickNote,undefined);
   game.user.isGM=false;
   const controls2={tokens:{tools:{select:{order:1}}},notes:{tools:{select:{order:1}}}};
   listeners.get('getSceneControlButtons')(controls2);
   assert.equal(controls2.tokens.tools.stlQuickMapNote.button,true);
+  assert.equal(controls2.tokens.tools.stlFindQuickNote.button,true);
   game.user.isGM=true;
 });
 
@@ -911,13 +916,198 @@ test('two simultaneous guide requests share one dialog and do not open duplicate
 });
 
 
-test('v0.1.8 module manager title uses the AFT prefix while preserving identity and update path', async () => {
+test('v0.1.9 module manager title retains AFT prefix and existing module ID', async () => {
   const {readFile} = await import('node:fs/promises');
   const manifest = JSON.parse(await readFile(new URL('../module.json', import.meta.url), 'utf8'));
   assert.equal(manifest.id, 'stl-quick-map-notes');
   assert.equal(manifest.title, 'AFT Quick Map Notes');
-  assert.equal(manifest.version, '0.1.8');
+  assert.equal(manifest.version, '0.1.9');
   assert.equal(manifest.manifest, 'https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json');
-  assert.match(manifest.download, /\/dist\/stl-quick-map-notes-v0\.1\.8\.zip$/);
+  assert.match(manifest.download, /\/dist\/stl-quick-map-notes-v0\.1\.9\.zip$/);
   assert.deepEqual(manifest.esmodules, ['scripts/main.mjs']);
+});
+
+
+// v0.1.9 finder fixtures: ordinary native Scene Notes and Page-linked Notes.
+function finderFixture({user={id:'alice',isGM:false},rect={x:0,y:0,width:1000,height:1000}}={}) {
+  const entry={id:'entry1',name:'Maryland Heights',testUserPermission:()=>true};
+  const permitted={id:'page-a',name:'Safe Page',testUserPermission:() => true};
+  const privatePage={id:'page-private',name:'GM Secrets',testUserPermission:u => Boolean(u.isGM)};
+  const note=(id,text,x,y,page=permitted,isVisible=true)=>({
+    document:{id,text,x,y,entryId:entry.id,pageId:page.id,parent:{id:'scene-finder'}},
+    entry,page,isVisible,isPreview:false
+  });
+  const list=[
+    note('z','Warehouse & <Co>',350,300),
+    note('a','Meeting Place',800,600),
+    note('private','Private <Secret>',450,500,privatePage),
+    note('fog','Fog-covered title',580,350,permitted,false)
+  ];
+  const pans=[],moves=[];
+  const scene={id:'scene-finder',async updateEmbeddedDocuments(type,updates){
+    moves.push({type,updates});return updates;
+  }};
+  const c={scene,ready:true,dimensions:{size:100,sceneRect:rect},grid:{isSquare:false,size:100},
+    notes:{placeables:list,async panToNote(n,opts){pans.push({id:n.document.id,opts});}},
+    tokens:{controlled:[]}};
+  return {c,notes:list,entry,permitted,privatePage,pans,moves,user};
+}
+
+test('Finder lists all current-scene visible native notes but never leaks personal page titles',()=>{
+  const {c,user,notes}=finderFixture();
+  notes.push({document:{id:'unlinked',text:'Broken Journal',x:100,y:100},isVisible:true});
+  notes.push({document:{id:'other',text:'Other Scene',x:100,y:100,parent:{id:'elsewhere'}},isVisible:true,
+    entry:{testUserPermission:()=>true}});
+  const entries=listVisibleSceneNotes(c,user);
+  assert.deepEqual(entries.map(n=>n.id),['a','z']);
+  const html=findQuickNoteHtml(entries,0);
+  assert.match(html,/Meeting Place/);
+  assert.match(html,/Warehouse &amp; &lt;Co&gt;/);
+  assert.doesNotMatch(html,/GM Secrets|Private|Fog-covered|Broken Journal|Other Scene/);
+  assert.match(html,/data-note-action="pan"/);
+  assert.match(html,/data-note-action="move"/);
+  assert.match(html,/disabled/);
+  assert.equal((html.match(/data-find-row/g)??[]).length,2);
+  assert.match(findQuickNoteHtml(entries,2),/Selected tokens: <strong>2/);
+});
+
+test('Finder uses explicit entry and page LIMITED permissions; GM can see hidden notes',()=>{
+  const f=finderFixture();
+  assert.deepEqual(listVisibleSceneNotes(f.c,{isGM:true}).map(n=>n.id),['fog','a','private','z']
+    .sort((a,b)=>{
+      const arr={fog:'Fog-covered title',a:'Meeting Place',private:'Private <Secret>',z:'Warehouse & <Co>'};
+      return arr[a].localeCompare(arr[b],undefined,{numeric:true,sensitivity:'base'});
+    }));
+  f.entry.testUserPermission=()=>false;
+  assert.equal(listVisibleSceneNotes(f.c,f.user).length,0);
+  f.entry.testUserPermission=()=>true;
+  f.permitted.testUserPermission=()=>false;
+  assert.equal(listVisibleSceneNotes(f.c,f.user).length,0);
+  delete f.notes[0].page;
+  assert.equal(listVisibleSceneNotes(f.c,f.user).length,0,'unresolved page fails closed');
+  assert.equal(listVisibleSceneNotes({...f.c,ready:false},f.user).length,0);
+});
+
+test('Native NotesLayer panToNote centers the chosen pin without editing Scene data',async()=>{
+  const f=finderFixture();
+  const note=await panToQuickNote('z',{sceneCanvas:f.c,user:f.user});
+  assert.equal(note.document.id,'z');
+  assert.deepEqual(f.pans,[{id:'z',opts:{duration:450}}]);
+  assert.equal(f.moves.length,0);
+  await assert.rejects(panToQuickNote('private',{sceneCanvas:f.c,user:f.user}),/no longer visible/);
+  await assert.rejects(panToQuickNote('z',{sceneCanvas:f.c,user:f.user,sceneId:'old'}),/Scene changed/);
+  f.notes.splice(0,1);
+  await assert.rejects(panToQuickNote('z',{sceneCanvas:f.c,user:f.user}),/no longer visible/);
+});
+
+test('Plan one token to a note center; multi-token moves retain rigid formation',()=>{
+  const f=finderFixture({user:{isGM:true}});
+  const t=(id,x,y)=>({document:{id,x,y,width:1,height:1,parent:{id:f.c.scene.id}},w:100,h:100});
+  const note=f.notes[0];
+  assert.deepEqual(planSelectedTokensToNote(note,{sceneCanvas:f.c,user:f.user,tokens:[t('solo',0,0)]}),
+    [{_id:'solo',x:300,y:250}]);
+  const multi=[t('A',0,0),t('B',100,0),t('C',0,100)];
+  const plan=planSelectedTokensToNote(note,{sceneCanvas:f.c,user:f.user,tokens:multi});
+  assert.deepEqual(plan,[{_id:'A',x:250,y:200},{_id:'B',x:350,y:200},{_id:'C',x:250,y:300}]);
+  assert.equal(plan[1].x-plan[0].x,100);
+  assert.equal(plan[2].y-plan[0].y,100);
+});
+
+test('Plan clips the whole formation inside Scene bounds rather than scattering tokens',()=>{
+  const f=finderFixture({user:{isGM:true},rect:{x:0,y:0,width:400,height:400}});
+  const note={document:{x:390,y:390}};
+  const tokens=[{document:{id:'A',x:0,y:0,width:1,height:1},w:100,h:100},
+    {document:{id:'B',x:100,y:0,width:1,height:1},w:100,h:100}];
+  const plan=planSelectedTokensToNote(note,{sceneCanvas:f.c,user:f.user,tokens});
+  assert.deepEqual(plan,[{_id:'A',x:200,y:300},{_id:'B',x:300,y:300}]);
+  assert.throws(()=>planSelectedTokensToNote(note,{sceneCanvas:f.c,user:f.user,
+    tokens:[{document:{id:'large',x:0,y:0,width:5,height:5},w:500,h:500}]}),/does not fit/);
+});
+
+test('Square grid snaps a common translation; tokens keep their original relative placement',()=>{
+  const f=finderFixture({user:{isGM:true}});
+  f.c.grid={isSquare:true,size:100};
+  const note={document:{x:375,y:160}};
+  const tokens=[{document:{id:'A',x:0,y:0},w:100,h:100},
+    {document:{id:'B',x:100,y:0},w:100,h:100}];
+  assert.deepEqual(planSelectedTokensToNote(note,{sceneCanvas:f.c,user:f.user,tokens}),
+    [{_id:'A',x:300,y:100},{_id:'B',x:400,y:100}]);
+});
+
+test('Invalid, locked, unauthorized and off-scene token groups refuse without any updates',()=>{
+  const f=finderFixture(),n=f.notes[0];
+  const own=(extra={})=>({document:{id:'owned',x:0,y:0,width:1,height:1,
+    canUserModify:()=>true,...extra},w:100,h:100});
+  assert.throws(()=>planSelectedTokensToNote(n,{sceneCanvas:f.c,user:f.user,tokens:[]}),/Select one or more tokens/);
+  assert.throws(()=>planSelectedTokensToNote(n,{sceneCanvas:f.c,user:f.user,tokens:[own({locked:true})]}),/locked/);
+  assert.throws(()=>planSelectedTokensToNote(n,{sceneCanvas:f.c,user:f.user,tokens:[own({canUserModify:()=>false})]}),/cannot move token/);
+  assert.throws(()=>planSelectedTokensToNote(n,{sceneCanvas:f.c,user:f.user,tokens:[own({parent:{id:'different'}})]}),/belong to this Scene/);
+  assert.throws(()=>planSelectedTokensToNote(n,{sceneCanvas:f.c,user:f.user,tokens:[own(),own({id:'other',canUserModify:()=>false})]}),/cannot move token/);
+  assert.equal(f.moves.length,0);
+});
+
+test('Token move requires separate action; updates only selected owned tokens then pans',async()=>{
+  const f=finderFixture();
+  f.c.tokens.controlled=[{document:{id:'myToken',name:'Mine',parent:{id:f.c.scene.id},
+    x:50,y:100,width:1,height:1,canUserModify:()=>true},w:100,h:100}];
+  const n=await moveSelectedTokensToQuickNote('a',{sceneCanvas:f.c,user:f.user});
+  assert.equal(n,1);
+  assert.deepEqual(f.moves,[{type:'Token',updates:[{_id:'myToken',x:750,y:550}]}]);
+  assert.deepEqual(f.pans,[{id:'a',opts:{duration:450}}]);
+  f.moves.length=0;f.pans.length=0;
+  await assert.rejects(moveSelectedTokensToQuickNote('private',{sceneCanvas:f.c,user:f.user}),/no longer visible/);
+  assert.deepEqual(f.moves,[]);
+  assert.deepEqual(f.pans,[]);
+});
+
+test('Finder rejects changed Scene, missing note, partial DB updates and edit denial',async()=>{
+  const f=finderFixture();
+  f.c.tokens.controlled=[{document:{id:'token',x:20,y:20,width:1,height:1,canUserModify:()=>true},w:100,h:100}];
+  await assert.rejects(moveSelectedTokensToQuickNote('z',{sceneCanvas:f.c,user:f.user,sceneId:'other'}),/Scene changed/);
+  f.c.scene.updateEmbeddedDocuments=async()=>[];
+  await assert.rejects(moveSelectedTokensToQuickNote('z',{sceneCanvas:f.c,user:f.user}),/incomplete/);
+  assert.equal(f.pans.length,0);
+  f.c.tokens.controlled[0].document.canUserModify=()=>false;
+  await assert.rejects(moveSelectedTokensToQuickNote('z',{sceneCanvas:f.c,user:f.user}),/cannot move token/);
+});
+
+test('Finder dialog builds searchable note list and wires separate pan and move interactions',async()=>{
+  const f=finderFixture();
+  const oldCanvas=globalThis.canvas,oldWait=foundry.applications.api.DialogV2.wait;
+  const oldDocument=globalThis.document,oldUser=game.user;
+  const token={document:{id:'token',x:0,y:0,width:1,height:1,canUserModify:()=>true},w:100,h:100};
+  f.c.tokens.controlled=[token];
+  let captured;
+  globalThis.canvas=f.c;game.user=f.user;
+  globalThis.document={createElement(){return {innerHTML:''};}};
+  foundry.applications.api.DialogV2.wait=async config=>{captured=config;return 'close';};
+  try {
+    assert.equal(await showFindQuickNotes(),'close');
+    assert.equal(captured.window.title,'Find Quick Note');
+    assert.match(captured.content.innerHTML,/data-note-action="pan"/);
+    assert.match(captured.content.innerHTML,/data-note-action="move"/);
+    assert.doesNotMatch(captured.content.innerHTML,/Private &lt;Secret&gt;|Fog-covered title/);
+    const callbackStore=new Map();
+    const fakeButton=(action,id)=>({dataset:{noteAction:action,noteId:id},disabled:false,
+      addEventListener(name,fn){callbackStore.set(`${action}:${id}`,fn);}});
+    const panButton=fakeButton('pan','z'),moveButton=fakeButton('move','a');
+    const search={value:'',addEventListener(_,fn){this.search=fn;}};
+    const row1={dataset:{search:'warehouse'},hidden:false};
+    const row2={dataset:{search:'meeting'},hidden:false};
+    const empty={hidden:true};
+    const root={querySelector(q){return q.includes('search input')?search:empty;},
+      querySelectorAll(q){return q==='[data-find-row]'?[row1,row2]:[panButton,moveButton];}};
+    captured.render(null,{element:root});
+    search.value='warehouse';search.search();
+    assert.equal(row1.hidden,false);assert.equal(row2.hidden,true);assert.equal(empty.hidden,true);
+    search.value='missing';search.search();
+    assert.equal(empty.hidden,false);
+    await callbackStore.get('pan:z')();
+    assert.equal(f.pans[0].id,'z');
+    assert.equal(f.moves.length,0);
+    await callbackStore.get('move:a')();
+    assert.equal(f.moves.length,1);
+    assert.equal(f.pans.at(-1).id,'a');
+  }finally{globalThis.canvas=oldCanvas;globalThis.document=oldDocument;
+    game.user=oldUser;foundry.applications.api.DialogV2.wait=oldWait;}
 });
