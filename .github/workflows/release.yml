@@ -1,4 +1,4 @@
-name: Verify and release Quick Map Notes
+name: Verify and release AFT Map Notes+
 
 on:
   push:
@@ -62,5 +62,5 @@ jobs:
           ' CHANGELOG.md > "${RUNNER_TEMP}/release-notes.md"
           test -s "${RUNNER_TEMP}/release-notes.md"
           gh release create "${TAG}" "${ARCHIVE}" \
-            --target main --title "AFT Quick Map Notes ${TAG}" \
+            --target main --title "AFT Map Notes+ ${TAG}" \
             --notes-file "${RUNNER_TEMP}/release-notes.md"

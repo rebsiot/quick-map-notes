@@ -1,5 +1,12 @@
 # Release Notes
 
+## v0.1.11 - 2026-10-18
+
+- **Renamed:** Foundry's Manage Modules list and new GitHub release now use **AFT Map Notes+**. The manager/tutorial window branding matches. The existing **Place Quick Note** and **Find / Manage Quick Notes** action labels remain familiar.
+- **Unchanged:** Module ID `stl-quick-map-notes`, stable manifest URL, original repository, functionality, permissions, Scene Notes, Journal Entries/Pages, flags, uploaded icons and tutorial dismissal choices. No migration or world writes on installation.
+- **Update:** Back up world data and persistent icon storage, update through Foundry Setup and refresh browsers. Restore the v0.1.10 ZIP to roll back code; actual world edits require their own backup.
+- **Verification:** Automated tests and ZIP validation; no live Foundry v14 / two-player privacy verification. Remains a packaged beta.
+
 ## v0.1.10 - 2026-10-18
 
 - **Fixed:** Find / Manage Quick Notes is now the first tool under Token Controls (person icon), not buried at the bottom. Opening it always shows the current Scene's management window, including when there are no visible notes.

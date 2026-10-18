@@ -1,12 +1,12 @@
 /**
- * AFT Quick Map Notes v0.1.10 — Foundry VTT 14, system-agnostic.
+ * AFT Map Notes+ v0.1.11 — Foundry VTT 14, system-agnostic.
  *
  * Deliberately uses native Scene Note and JournalEntry documents. It does not
  * override core notes, Journal permissions, or Scene Library imports.
  */
 
 const MODULE_ID = "stl-quick-map-notes";
-const VERSION = "0.1.10";
+const VERSION = "0.1.11";
 const ICON_DIR = `modules/${MODULE_ID}/icons`;
 
 export const ICONS = Object.freeze([
@@ -480,7 +480,7 @@ export function showQuickMapTutorial({force = false} = {}) {
           : [{action:"next", label:"Next", icon:"fa-solid fa-chevron-right", default:true}])
       ];
       const action = await DialogV2.wait({
-        window:{title:"Quick Map Notes - Quick Tutorial", icon:"fa-solid fa-map-pin"},
+        window:{title:"AFT Map Notes+ - Quick Tutorial", icon:"fa-solid fa-map-pin"},
         classes:["stl-qmn-tutorial"],
         position:{width:460},
         modal:false,
@@ -498,7 +498,7 @@ export function showQuickMapTutorial({force = false} = {}) {
         try { await dismissQuickMapTutorial(user); }
         catch (error) {
           console.warn(`[${MODULE_ID}] Tutorial preference could not be saved`, error);
-          ui.notifications.warn("Quick Map Notes: Tutorial preference could not be saved. The guide may appear next login.");
+          ui.notifications.warn("AFT Map Notes+: Tutorial preference could not be saved. The guide may appear next login.");
           return false;
         }
         return true;
@@ -535,7 +535,7 @@ function buildDialogContent() {
 
   return `<div class="stl-qmn-form">
     <div class="stl-qmn-guide-link"><button type="button" id="stl-qmn-show-tutorial"
-      title="Open the Quick Map Notes tutorial"><i class="fa-solid fa-circle-question"></i> Quick tutorial</button></div>
+      title="Open the AFT Map Notes+ tutorial"><i class="fa-solid fa-circle-question"></i> Quick tutorial</button></div>
     <div class="stl-qmn-grid">
       <label class="stl-qmn-field stl-qmn-full"><span>Title / map label</span>
         <input type="text" name="title" maxlength="120" placeholder="e.g. Old Warehouse" required autofocus></label>
@@ -614,7 +614,7 @@ function wireDialog(dialog, state) {
   $("#stl-qmn-show-tutorial")?.addEventListener("click", () => {
     void showQuickMapTutorial({force:true}).catch(error => {
       console.error(`[${MODULE_ID}] Could not open tutorial`, error);
-      ui.notifications.error("Quick Map Notes: Could not open the tutorial.");
+      ui.notifications.error("AFT Map Notes+: Could not open the tutorial.");
     });
   });
 
@@ -987,7 +987,7 @@ async function showCreationDialog(scene, at) {
       : "Map note created.");
   } catch (error) {
     console.error(`[${MODULE_ID}] Unable to create map note`, error);
-    ui.notifications.error(`Quick Map Notes: ${error.message}`);
+    ui.notifications.error(`AFT Map Notes+: ${error.message}`);
   }
 }
 
@@ -1199,7 +1199,7 @@ export async function showFindQuickNotes() {
   content.innerHTML=findQuickNoteHtml(listVisibleSceneNotes(sceneCanvas,user),
     sceneCanvas.tokens?.controlled?.length ?? 0,user?.isGM === true);
   return foundry.applications.api.DialogV2.wait({
-    window:{title:"Quick Map Notes - This Scene",icon:"fa-solid fa-list",resizable:true},
+    window:{title:"AFT Map Notes+ - This Scene",icon:"fa-solid fa-list",resizable:true},
     classes:["stl-qmn-finder"],
     position:{width:720},
     content,
@@ -1250,7 +1250,7 @@ export async function showFindQuickNotes() {
           }
         }catch(error){
           console.warn(`[${MODULE_ID}] Map Notes action failed`,error);
-          ui.notifications.error(`Quick Map Notes: ${error.message}`);
+          ui.notifications.error(`AFT Map Notes+: ${error.message}`);
         }finally{button.disabled=false;}
       });
     }
@@ -1345,8 +1345,8 @@ if (globalThis.Hooks) {
       icon: "fa-solid fa-list", order:first,
       button: true, visible: true,
       onChange: () => { void showFindQuickNotes().catch(error => {
-        console.error(`[${MODULE_ID}] Cannot open Quick Map Notes manager`,error);
-        ui.notifications.error(`Quick Map Notes: ${error.message}`);
+        console.error(`[${MODULE_ID}] Cannot open AFT Map Notes+ manager`,error);
+        ui.notifications.error(`AFT Map Notes+: ${error.message}`);
       }); }
     };
     tools.stlQuickMapNote = {

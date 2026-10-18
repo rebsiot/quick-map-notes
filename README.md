@@ -1,4 +1,4 @@
-# AFT Quick Map Notes
+# AFT Map Notes+
 
 Place map pins quickly and store the notes in native Foundry Journals. Players can keep notes Personal or share them with the party; GMs can create and manage notes with their normal Foundry permissions.
 
@@ -44,7 +44,7 @@ This module targets Foundry VTT v14 and has no game-system dependency.
 
    `https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json`
 
-3. Enable **AFT Quick Map Notes** under **Game Settings > Manage Modules** in the intended world; reload connected browsers.
+3. Enable **AFT Map Notes+** under **Game Settings > Manage Modules** in the intended world; reload connected browsers.
 
 For manual ZIP replacement, stop Foundry and install the complete folder at `Data/modules/stl-quick-map-notes`. Preserve persistent uploaded images and existing world data.
 
@@ -52,7 +52,7 @@ For manual ZIP replacement, stop Foundry and install the complete folder at `Dat
 
 The module has passed automated/mock tests, **not** the full Foundry v14 multiplayer privacy test. Before using private player notes for sensitive information, test with a GM and two players: Page ownership, private pin/title visibility, adding a note to an existing Scene Journal, and refresh/reconnect. Earlier player permission errors have occurred; automated checks cannot establish the live behavior. The Find/Manage window, GM-only Delete Pin confirmation, and direct token move also require a live v14 toolbar/canvas/permission test.
 
-Updating this release does **not** migrate or alter existing Journals, Pages, pins, IDs, flags, or saved tutorial preferences. The internal module ID and display title remain unchanged. Restore the [v0.1.9 package](https://github.com/rebsiot/quick-map-notes/releases/tag/v0.1.9) to roll back the code. To undo world edits made during play, restore a matching world backup separately.
+Updating this release does **not** migrate or alter existing Journals, Pages, pins, IDs, flags, or saved tutorial preferences. This update changes only user-visible naming; the internal module ID, note data and permissions remain unchanged. Restore the [v0.1.10 package](https://github.com/rebsiot/quick-map-notes/releases/tag/v0.1.10) to roll back the code. To undo world edits made during play, restore a matching world backup separately.
 
 ## More information
 

@@ -1,4 +1,4 @@
-# Quick Map Notes: Permissions and technical details
+# AFT Map Notes+: Permissions and technical details
 
 The material below describes the v0.1.7-v0.1.10 player and GM data model. v0.1.9 adds a finder and optional native token relocation, not new Journal permissions or content migrations. For installation and basic use, see [README](../README.md).
 

@@ -917,14 +917,14 @@ test('two simultaneous guide requests share one dialog and do not open duplicate
 });
 
 
-test('v0.1.9 module manager title retains AFT prefix and existing module ID', async () => {
+test('v0.1.11 display rename retains existing module ID and update manifest', async () => {
   const {readFile} = await import('node:fs/promises');
   const manifest = JSON.parse(await readFile(new URL('../module.json', import.meta.url), 'utf8'));
   assert.equal(manifest.id, 'stl-quick-map-notes');
-  assert.equal(manifest.title, 'AFT Quick Map Notes');
-  assert.equal(manifest.version, '0.1.10');
+  assert.equal(manifest.title, 'AFT Map Notes+');
+  assert.equal(manifest.version, '0.1.11');
   assert.equal(manifest.manifest, 'https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json');
-  assert.match(manifest.download, /\/dist\/stl-quick-map-notes-v0\.1\.10\.zip$/);
+  assert.match(manifest.download, /\/dist\/stl-quick-map-notes-v0\.1\.11\.zip$/);
   assert.deepEqual(manifest.esmodules, ['scripts/main.mjs']);
 });
 
@@ -1082,7 +1082,7 @@ test('Find/Manage dialog always opens and stays accessible even with no visible 
   foundry.applications.api.DialogV2.wait=async config=>{captured=config;return 'close';};
   try {
     assert.equal(await showFindQuickNotes(),'close');
-    assert.equal(captured.window.title,'Quick Map Notes - This Scene');
+    assert.equal(captured.window.title,'AFT Map Notes+ - This Scene');
     assert.match(captured.content.innerHTML,/No accessible map notes found/);
     assert.match(captured.content.innerHTML,/data-note-action="refresh"/);
     assert.doesNotMatch(captured.content.innerHTML,/data-note-action="delete"/);
@@ -1102,7 +1102,7 @@ test('Find/Manage dialog delegates search, pan, move and refresh actions',async(
   foundry.applications.api.DialogV2.wait=async config=>{captured=config;return 'close';};
   try {
     assert.equal(await showFindQuickNotes(),'close');
-    assert.equal(captured.window.title,'Quick Map Notes - This Scene');
+    assert.equal(captured.window.title,'AFT Map Notes+ - This Scene');
     assert.match(captured.content.innerHTML,/data-note-action="pan"/);
     assert.match(captured.content.innerHTML,/data-note-action="move"/);
     assert.doesNotMatch(captured.content.innerHTML,/Private &lt;Secret&gt;|Fog-covered title|data-note-action="delete"/);
