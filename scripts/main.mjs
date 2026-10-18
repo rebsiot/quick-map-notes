@@ -1,12 +1,12 @@
 /**
- * AFT Map Notes+ v0.1.12 — Foundry VTT 14, system-agnostic.
+ * AFT Map Notes+ v0.1.13 — Foundry VTT 14, system-agnostic.
  *
  * Deliberately uses native Scene Note and JournalEntry documents. It does not
  * override core notes, Journal permissions, or Scene Library imports.
  */
 
 const MODULE_ID = "stl-quick-map-notes";
-const VERSION = "0.1.12";
+const VERSION = "0.1.13";
 const ICON_DIR = `modules/${MODULE_ID}/icons`;
 
 export const ICONS = Object.freeze([
@@ -1354,12 +1354,56 @@ function cancelMapMenuClose() {
   mapNotesMenuCloseTimer = null;
 }
 
-function scheduleMapMenuClose() {
-  cancelMapMenuClose();
-  mapNotesMenuCloseTimer = setTimeout(() => closeMapNotesMenu(), 180);
+/** This menu is bound exclusively to a Token Controls tool, even if v14 has
+ * already switched its reported active control while processing the hover. */
+function captureMapNotesTokenContext(sceneCanvas = globalThis.canvas) {
+  return {
+    fromTokens: true,
+    sceneId: sceneCanvas?.scene?.id ?? null,
+    tokenIds: Array.from(sceneCanvas?.tokens?.controlled ?? [])
+      .map(token => token?.document?.id ?? token?.id).filter(Boolean)
+  };
 }
 
-export function closeMapNotesMenu({restoreFocus = false} = {}) {
+/**
+ * v14 can leave the Journal Notes layer active after a Map Notes+ hover.
+ * Restore Token Controls only if this menu opened there and the active layer
+ * is now Notes; never steal deliberate switches to Walls, Lighting, etc.
+ * Token selection may be released by the layer transition, so recover only
+ * the previously controlled native Tokens (normal permission checks apply).
+ */
+export async function restoreMapNotesTokenControls(context, {
+  sceneCanvas = globalThis.canvas, controls = globalThis.ui?.controls
+} = {}) {
+  if (!context?.fromTokens || !sceneCanvas?.ready || !context.sceneId ||
+      sceneCanvas.scene?.id !== context.sceneId || controls?.control?.name !== "notes" ||
+      typeof controls.activate !== "function") return false;
+  suppressMapNotesFocus = true;
+  try {
+    await controls.activate({control:"tokens",tool:"select"});
+    if (controls.control?.name !== "tokens") return false;
+    // Avoid replacing any selection made since the menu opened.
+    if (!sceneCanvas.tokens?.controlled?.length) {
+      for (const id of context.tokenIds ?? []) {
+        const token = sceneCanvas.tokens?.get?.(id) ??
+          Array.from(sceneCanvas.tokens?.placeables ?? [])
+            .find(token => (token?.document?.id ?? token?.id) === id);
+        if (token?.visible === false) continue;
+        token?.control?.({releaseOthers:false,renderSidebar:false});
+      }
+    }
+    return true;
+  } finally {
+    suppressMapNotesFocus = false;
+  }
+}
+
+function scheduleMapMenuClose() {
+  cancelMapMenuClose();
+  mapNotesMenuCloseTimer = setTimeout(() => closeMapNotesMenu({restoreControls:true}), 180);
+}
+
+export function closeMapNotesMenu({restoreFocus = false, restoreControls = false} = {}) {
   cancelMapMenuClose();
   const state = activeMapNotesMenu;
   if (!state) return;
@@ -1374,6 +1418,10 @@ export function closeMapNotesMenu({restoreFocus = false} = {}) {
     suppressMapNotesFocus = true;
     try {state.trigger.focus?.();}
     finally {suppressMapNotesFocus = false;}
+  }
+  if (restoreControls) {
+    void restoreMapNotesTokenControls(state.tokenContext).catch(error =>
+      console.warn(`[${MODULE_ID}] Could not restore Token Controls`, error));
   }
 }
 
@@ -1418,13 +1466,16 @@ export function openMapNotesMenu(trigger, {focusFirst = false} = {}) {
     if (!menu.contains(event.target) && !trigger.contains(event.target)) return;
     event.preventDefault();
     event.stopPropagation();
-    closeMapNotesMenu({restoreFocus:true});
+    closeMapNotesMenu({restoreFocus:true,restoreControls:true});
   };
   menu.addEventListener("mouseenter",cancelMapMenuClose);
   menu.addEventListener("mouseleave",scheduleMapMenuClose);
   menu.addEventListener("focusin",cancelMapMenuClose);
   menu.addEventListener("focusout",event => {
-    if (!menu.contains(event.relatedTarget) && event.relatedTarget !== trigger) scheduleMapMenuClose();
+    if (menu.contains(event.relatedTarget) || event.relatedTarget === trigger) return;
+    // Moving keyboard focus to another native control is an intentional choice.
+    if (globalThis.ui?.controls?.element?.contains?.(event.relatedTarget)) closeMapNotesMenu();
+    else scheduleMapMenuClose();
   });
   menu.addEventListener("click", event => {
     const button=event.target?.closest?.("button[data-map-notes-action]");
@@ -1432,11 +1483,16 @@ export function openMapNotesMenu(trigger, {focusFirst = false} = {}) {
     event.preventDefault();
     event.stopPropagation();
     const action=button.dataset.mapNotesAction;
+    const tokenContext=activeMapNotesMenu?.tokenContext;
     closeMapNotesMenu();
-    void runMapNotesMenuAction(action).catch(reportMapMenuError);
+    void (async () => {
+      await restoreMapNotesTokenControls(tokenContext);
+      return runMapNotesMenuAction(action);
+    })().catch(reportMapMenuError);
   });
   trigger.setAttribute?.("aria-expanded","true");
-  activeMapNotesMenu={trigger,menu,doc,win,position,outside,keydown};
+  activeMapNotesMenu={trigger,menu,doc,win,position,outside,keydown,
+    tokenContext:captureMapNotesTokenContext()};
   doc.addEventListener("pointerdown",outside,true);
   doc.addEventListener("keydown",keydown,true);
   doc.addEventListener("scroll",position,true);
@@ -1460,7 +1516,7 @@ export function bindMapNotesHover(app) {
   const root=app?.element ?? app;
   const trigger=findMapNotesTrigger(root);
   if (!trigger) {
-    if (activeMapNotesMenu) closeMapNotesMenu();
+    if (activeMapNotesMenu) closeMapNotesMenu({restoreControls:true});
     return false;
   }
   if (trigger.dataset?.stlMapNotesBound === "1") return true;

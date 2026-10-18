@@ -2,7 +2,7 @@
   "id": "stl-quick-map-notes",
   "title": "AFT Map Notes+",
   "description": "Place, find, and manage native map pins and linked Journal notes, with Personal/Party visibility, icons, and optional token relocation.",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "compatibility": {
     "minimum": "14",
     "verified": "14",
@@ -24,5 +24,5 @@
   "persistentStorage": true,
   "url": "https://github.com/rebsiot/quick-map-notes",
   "manifest": "https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json",
-  "download": "https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/dist/stl-quick-map-notes-v0.1.12.zip"
+  "download": "https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/dist/stl-quick-map-notes-v0.1.13.zip"
 }

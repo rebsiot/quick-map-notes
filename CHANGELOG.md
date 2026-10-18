@@ -1,5 +1,14 @@
 # Release Notes
 
+## v0.1.13 - 2026-10-18
+
+- **Fixed:** Leaving the **Map Notes+** hover menu no longer leaves players or GMs stuck on the Journal Notes toolbar when the menu was opened from Token Controls. The module uses Foundry v14's native `SceneControls.activate` to return to **Token Controls > Select Tokens** if Notes became active.
+- **Selection:** Recover the tokens selected when the Map Notes+ menu opened if Foundry cleared that selection during an unexpected layer transition; retain any newer selection instead of overwriting it.
+- **Respect user choice:** Clicking another toolbar intentionally is not undone. The repair does not switch unrelated control layers (Walls/Lighting/etc.) or run after a Scene change. Find/Manage actions remain separate; no changed Journal or pin permissions.
+- **Preserved:** Same **AFT Map Notes+** title, module ID `stl-quick-map-notes`, stable manifest and Place/Find/Manage workflow. Existing Journals, Pages, Scenes, Notes, IDs, flags, uploaded icons, tutorial state and token data are not migrated or altered on installation.
+- **Before upgrading:** Back up the Foundry world and persistent icons; use **Update Modules** then refresh all clients. Restore full v0.1.12 ZIP to revert code if needed. Restoring code never reverses world edits made in play.
+- **Verification:** 80/80 Node automated/mock tests, syntax and complete ZIP integrity passed. A user reported the v0.1.12 toolbar problem in live Foundry; the v0.1.13 fix itself remains unverified in the user's live Foundry v14 world, as does GM + two-player note privacy. Packaged beta.
+
 ## v0.1.12 - 2026-10-18
 
 - **Changed:** **Map Notes+** is now one Token Controls button. Hover, focus, or click to choose **Place Map Note**, **Find Map Note**, or **Manage Map Note**. This preserves the Token Controls selection layer while using the menu.

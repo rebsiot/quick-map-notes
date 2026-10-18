@@ -79,7 +79,7 @@ globalThis.JournalEntry={
 globalThis.ui={notifications:{info(){},error(){},warn(){}}};
 globalThis.canvas={scene,ready:true,dimensions:{sceneRect:{x:0,y:0,width:500,height:500}}};
 
-const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal,canReadPlayerMapJournal,tutorialSlides,isTutorialDismissed,dismissQuickMapTutorial,showQuickMapTutorial,listVisibleSceneNotes,findQuickNoteHtml,panToQuickNote,planSelectedTokensToNote,moveSelectedTokensToQuickNote,deleteQuickNotePin,showFindQuickNotes,mapNotesMenuHtml,runMapNotesMenuAction,openMapNotesMenu,closeMapNotesMenu,findMapNotesTrigger,bindMapNotesHover} = await import('../scripts/main.mjs');
+const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal,canReadPlayerMapJournal,tutorialSlides,isTutorialDismissed,dismissQuickMapTutorial,showQuickMapTutorial,listVisibleSceneNotes,findQuickNoteHtml,panToQuickNote,planSelectedTokensToNote,moveSelectedTokensToQuickNote,deleteQuickNotePin,showFindQuickNotes,mapNotesMenuHtml,runMapNotesMenuAction,openMapNotesMenu,closeMapNotesMenu,findMapNotesTrigger,bindMapNotesHover,restoreMapNotesTokenControls} = await import('../scripts/main.mjs');
 
 const baseForm = ()=>({
   title:'Old Warehouse',description:'Possible <danger> & clues',
@@ -918,14 +918,14 @@ test('two simultaneous guide requests share one dialog and do not open duplicate
 });
 
 
-test('v0.1.12 retains AFT Map Notes+ display name, existing ID and stable manifest', async () => {
+test('v0.1.13 retains AFT Map Notes+ display name, existing ID and stable manifest', async () => {
   const {readFile} = await import('node:fs/promises');
   const manifest = JSON.parse(await readFile(new URL('../module.json', import.meta.url), 'utf8'));
   assert.equal(manifest.id, 'stl-quick-map-notes');
   assert.equal(manifest.title, 'AFT Map Notes+');
-  assert.equal(manifest.version, '0.1.12');
+  assert.equal(manifest.version, '0.1.13');
   assert.equal(manifest.manifest, 'https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json');
-  assert.match(manifest.download, /\/dist\/stl-quick-map-notes-v0\.1\.12\.zip$/);
+  assert.match(manifest.download, /\/dist\/stl-quick-map-notes-v0\.1\.13\.zip$/);
   assert.deepEqual(manifest.esmodules, ['scripts/main.mjs']);
 });
 
@@ -1395,4 +1395,158 @@ test('Map Notes+ native tool click also opens menu for keyboard/touch users',asy
     assert.equal(d.doc.focusedChild,true);
     assert.match(d.doc.popup.innerHTML,/Manage Map Note/);
   } finally {closeMapNotesMenu();ui.controls=oldControls;}
+});
+
+
+// v0.1.13 - regression reported from actual v14 session: Journal Notes layer
+// remains selected when the pointer leaves the Map Notes+ hover flyout.
+function tokenToolbarFixture() {
+  const selected=[];
+  const controlled=[];
+  const tokens=new Map();
+  for (const id of ['first','second']) {
+    tokens.set(id,{id,document:{id},visible:true,control(options){
+      assert.equal(options.releaseOthers,false);
+      assert.equal(options.renderSidebar,false);
+      if (!controlled.includes(this)) controlled.push(this);
+      selected.push(id);
+      return true;
+    }});
+  }
+  const sceneCanvas={ready:true,scene:{id:'my-map'},tokens:{controlled,placeables:[...tokens.values()],get:id=>tokens.get(id)}};
+  const activations=[];
+  const controls={control:{name:'notes'},async activate(opts){
+    activations.push(opts);this.control={name:opts.control};
+  }};
+  const ctx={fromTokens:true,sceneId:'my-map',tokenIds:['first','second']};
+  return {ctx,controls,sceneCanvas,activations,selected};
+}
+
+test('v14 Map Notes+ returns to Token Controls and recovers prior native token selection',async()=>{
+  const f=tokenToolbarFixture();
+  assert.equal(await restoreMapNotesTokenControls(f.ctx,{controls:f.controls,sceneCanvas:f.sceneCanvas}),true);
+  assert.deepEqual(f.activations,[{control:'tokens',tool:'select'}]);
+  assert.deepEqual(f.selected,['first','second']);
+  assert.equal(f.controls.control.name,'tokens');
+  assert.equal(await restoreMapNotesTokenControls(f.ctx,{controls:f.controls,sceneCanvas:f.sceneCanvas}),false);
+  assert.equal(f.activations.length,1);
+});
+
+test('v14 control restoration is scoped to current Scene, prior Token Controls and Notes only',async()=>{
+  const f=tokenToolbarFixture();
+  assert.equal(await restoreMapNotesTokenControls({...f.ctx,fromTokens:false},{controls:f.controls,sceneCanvas:f.sceneCanvas}),false);
+  assert.equal(await restoreMapNotesTokenControls({...f.ctx,sceneId:'another-map'},{controls:f.controls,sceneCanvas:f.sceneCanvas}),false);
+  f.controls.control.name='walls';
+  assert.equal(await restoreMapNotesTokenControls(f.ctx,{controls:f.controls,sceneCanvas:f.sceneCanvas}),false);
+  f.controls.control.name='lighting';
+  assert.equal(await restoreMapNotesTokenControls(f.ctx,{controls:f.controls,sceneCanvas:f.sceneCanvas}),false);
+  f.sceneCanvas.ready=false;
+  f.controls.control.name='notes';
+  assert.equal(await restoreMapNotesTokenControls(f.ctx,{controls:f.controls,sceneCanvas:f.sceneCanvas}),false);
+  f.sceneCanvas.ready=true;
+  f.sceneCanvas.tokens.controlled.push(f.sceneCanvas.tokens.get('second'));
+  assert.equal(await restoreMapNotesTokenControls(f.ctx,{controls:f.controls,sceneCanvas:f.sceneCanvas}),true);
+  assert.deepEqual(f.selected,[],'preserve a new token selection rather than replacing it');
+});
+
+test('leaving the Map Notes+ hover flyout restores native token toolbar, not Journal Notes',async()=>{
+  const oldCanvas=globalThis.canvas,oldUi=ui.controls;
+  const d=menuDomFixture(),f=tokenToolbarFixture();
+  ui.controls=f.controls;ui.controls.control.name='tokens';
+  globalThis.canvas=f.sceneCanvas;
+  f.sceneCanvas.tokens.controlled.push(f.sceneCanvas.tokens.get('first'));
+  try {
+    bindMapNotesHover({element:d.root});
+    d.triggerListeners.get('mouseenter')();
+    assert.ok(d.doc.popup);
+    // Simulate v14 changing active layer while the pointer is over a map note.
+    ui.controls.control.name='notes';
+    f.sceneCanvas.tokens.controlled.length=0;
+    d.triggerListeners.get('mouseleave')();
+    await new Promise(resolve=>setTimeout(resolve,215));
+    assert.equal(d.doc.popup,null);
+    assert.equal(ui.controls.control.name,'tokens');
+    assert.deepEqual(f.activations,[{control:'tokens',tool:'select'}]);
+    assert.deepEqual(f.selected,['first']);
+  } finally {closeMapNotesMenu();ui.controls=oldUi;globalThis.canvas=oldCanvas;}
+});
+
+test('explicit outside pointer press does not force the user back to Token Controls',async()=>{
+  const oldCanvas=globalThis.canvas,oldUi=ui.controls;
+  const d=menuDomFixture(),f=tokenToolbarFixture();
+  ui.controls=f.controls;ui.controls.control.name='tokens';globalThis.canvas=f.sceneCanvas;
+  try {
+    openMapNotesMenu(d.trigger);
+    ui.controls.control.name='notes';
+    d.docListeners.get('pointerdown')({target:{}});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(d.doc.popup,null);
+    assert.equal(ui.controls.control.name,'notes');
+    assert.equal(f.activations.length,0);
+  }finally{closeMapNotesMenu();ui.controls=oldUi;globalThis.canvas=oldCanvas;}
+});
+
+test('Find action reselects Token Controls before opening the pan-only list',async()=>{
+  const d=menuDomFixture(),f=tokenToolbarFixture(),finder=finderFixture();
+  const oldCanvas=globalThis.canvas,oldUi=ui.controls,oldUser=game.user;
+  const oldDocument=globalThis.document,oldWait=foundry.applications.api.DialogV2.wait;
+  const states=[];
+  ui.controls=f.controls;ui.controls.control.name='tokens';
+  globalThis.canvas=finder.c;globalThis.document=d.doc;game.user=finder.user;
+  finder.c.scene.id='my-map';
+  foundry.applications.api.DialogV2.wait=async()=>{states.push(ui.controls.control.name);return 'close';};
+  try{
+    bindMapNotesHover({element:d.root});
+    d.triggerListeners.get('mouseenter')();
+    ui.controls.control.name='notes';
+    const b={inMenu:true,dataset:{mapNotesAction:'find'}};
+    d.popupListeners.get('click')({target:{closest:()=>b},preventDefault(){},stopPropagation(){}});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.deepEqual(states,['tokens']);
+  }finally{closeMapNotesMenu();globalThis.canvas=oldCanvas;ui.controls=oldUi;
+    game.user=oldUser;globalThis.document=oldDocument;foundry.applications.api.DialogV2.wait=oldWait;}
+});
+
+test('rerendering toolbar away from the Map Notes+ trigger restores prior Tokens',async()=>{
+  const oldCanvas=globalThis.canvas,oldUi=ui.controls;
+  const d=menuDomFixture(),f=tokenToolbarFixture();
+  ui.controls=f.controls;ui.controls.control.name='tokens';globalThis.canvas=f.sceneCanvas;
+  try{
+    openMapNotesMenu(d.trigger);
+    ui.controls.control.name='notes';
+    assert.equal(bindMapNotesHover({element:{querySelector(){return null;}}}),false);
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(ui.controls.control.name,'tokens');
+    assert.equal(d.doc.popup,null);
+  }finally{closeMapNotesMenu();globalThis.canvas=oldCanvas;ui.controls=oldUi;}
+});
+
+test('Map Notes+ hover restores Tokens even when Foundry reported Notes before the menu appeared',async()=>{
+  const oldCanvas=globalThis.canvas,oldUi=ui.controls;
+  const d=menuDomFixture(),f=tokenToolbarFixture();
+  // The native button remains on Token Controls; the getter has already flipped to notes.
+  ui.controls=f.controls;globalThis.canvas=f.sceneCanvas;
+  try{
+    openMapNotesMenu(d.trigger);
+    closeMapNotesMenu({restoreControls:true});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(ui.controls.control.name,'tokens');
+    assert.deepEqual(f.activations,[{control:'tokens',tool:'select'}]);
+  }finally{closeMapNotesMenu();globalThis.canvas=oldCanvas;ui.controls=oldUi;}
+});
+
+test('keyboard focus moving to a different native toolbar leaves the user chosen layer untouched',async()=>{
+  const d=menuDomFixture(),f=tokenToolbarFixture();
+  const oldCanvas=globalThis.canvas,oldUi=ui.controls;
+  globalThis.canvas=f.sceneCanvas;ui.controls=f.controls;ui.controls.control.name='tokens';
+  const otherTool={};ui.controls.element={contains(node){return node===otherTool;}};
+  try{
+    openMapNotesMenu(d.trigger);
+    ui.controls.control.name='notes';
+    d.popupListeners.get('focusout')({relatedTarget:otherTool});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(d.doc.popup,null);
+    assert.equal(ui.controls.control.name,'notes');
+    assert.equal(f.activations.length,0);
+  }finally{closeMapNotesMenu();globalThis.canvas=oldCanvas;ui.controls=oldUi;}
 });
