@@ -1,5 +1,13 @@
 # Release Notes
 
+## v0.1.12 - 2026-10-18
+
+- **Changed:** **Map Notes+** is now one Token Controls button. Hover, focus, or click to choose **Place Map Note**, **Find Map Note**, or **Manage Map Note**. This preserves the Token Controls selection layer while using the menu.
+- **Find versus Manage:** Find has a searchable current-Scene list and **Pan** only. Manage retains the searchable list, **Pan**, permitted **Move selected**, and GM-only confirmed **Delete Pin**. Both provide Refresh list, including empty maps.
+- **Preserved:** Place creates the same native Journal/Page and Scene pin as before. Existing Notes, Journal ownership/permissions, token positions, IDs, flags, uploads, tutorial dismissals, module ID and stable manifest are unchanged. Hidden legacy toolbar IDs remain available for compatibility; there is no automatic migration.
+- **Upgrade:** Back up the Foundry world and persistent uploaded icons, update through the existing manifest, and reload clients. Restore v0.1.11 for code rollback; world edits made after installation need a separate matching world backup.
+- **Testing:** Node automated/mock checks and ZIP integrity only. Hover-menu rendering in real Foundry v14, Find/Manage permissions, selected-token moves, GM deletion, and two-player private-page/pin visibility remain live-unverified. Packaged beta.
+
 ## v0.1.11 - 2026-10-18
 
 - **Renamed:** Foundry's Manage Modules list and new GitHub release now use **AFT Map Notes+**. The manager/tutorial window branding matches. The existing **Place Quick Note** and **Find / Manage Quick Notes** action labels remain familiar.

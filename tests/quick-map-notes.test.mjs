@@ -79,7 +79,7 @@ globalThis.JournalEntry={
 globalThis.ui={notifications:{info(){},error(){},warn(){}}};
 globalThis.canvas={scene,ready:true,dimensions:{sceneRect:{x:0,y:0,width:500,height:500}}};
 
-const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal,canReadPlayerMapJournal,tutorialSlides,isTutorialDismissed,dismissQuickMapTutorial,showQuickMapTutorial,listVisibleSceneNotes,findQuickNoteHtml,panToQuickNote,planSelectedTokensToNote,moveSelectedTokensToQuickNote,deleteQuickNotePin,showFindQuickNotes} = await import('../scripts/main.mjs');
+const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal,canReadPlayerMapJournal,tutorialSlides,isTutorialDismissed,dismissQuickMapTutorial,showQuickMapTutorial,listVisibleSceneNotes,findQuickNoteHtml,panToQuickNote,planSelectedTokensToNote,moveSelectedTokensToQuickNote,deleteQuickNotePin,showFindQuickNotes,mapNotesMenuHtml,runMapNotesMenuAction,openMapNotesMenu,closeMapNotesMenu,findMapNotesTrigger,bindMapNotesHover} = await import('../scripts/main.mjs');
 
 const baseForm = ()=>({
   title:'Old Warehouse',description:'Possible <danger> & clues',
@@ -87,7 +87,7 @@ const baseForm = ()=>({
   iconSize:'40',tint:'#edab12',applyTint:true,globallyVisible:false
 });
 
-test('Foundry 14 Token Controls keeps Place and makes Find/Manage the first, discoverable tool',()=>{
+test('Foundry 14 Token Controls shows one Map Notes+ button and preserves hidden legacy IDs',()=>{
   assert.equal(typeof listeners.get('init'),'function');
   listeners.get('init')();
   const controls={
@@ -95,21 +95,22 @@ test('Foundry 14 Token Controls keeps Place and makes Find/Manage the first, dis
     notes:{tools:{select:{order:1},create:{order:2}}}
   };
   listeners.get('getSceneControlButtons')(controls);
-  assert.equal(controls.tokens.tools.stlQuickMapNote.button,true);
-  assert.equal(controls.tokens.tools.stlQuickMapNote.order,-1);
-  assert.equal(controls.tokens.tools.stlQuickMapNote.visible,true);
-  assert.equal(controls.tokens.tools.stlQuickMapNote.title,'Place Quick Note');
-  assert.equal(controls.tokens.tools.stlFindQuickNote.title,'Find / Manage Quick Notes');
-  assert.equal(controls.tokens.tools.stlFindQuickNote.order,-2);
-  assert.ok(controls.tokens.tools.stlFindQuickNote.order<controls.tokens.tools.select.order);
-  assert.equal(controls.tokens.tools.stlFindQuickNote.button,true);
-  assert.equal(controls.notes.tools.stlQuickMapNote,undefined);
-  assert.equal(controls.notes.tools.stlFindQuickNote,undefined);
+  const tools=controls.tokens.tools;
+  assert.equal(tools.stlMapNotesMenu.title,'Map Notes+');
+  assert.equal(tools.stlMapNotesMenu.order,-1);
+  assert.equal(tools.stlMapNotesMenu.visible,true);
+  assert.equal(tools.stlMapNotesMenu.button,true);
+  assert.equal(tools.stlQuickMapNote.visible,false);
+  assert.equal(tools.stlQuickMapNote.button,true);
+  assert.equal(tools.stlFindQuickNote.visible,false);
+  assert.equal(tools.stlFindQuickNote.button,true);
+  assert.equal(Object.values(tools).filter(t=>t.visible===true).length,1);
+  assert.equal(controls.notes.tools.stlMapNotesMenu,undefined);
   game.user.isGM=false;
   const controls2={tokens:{tools:{select:{order:1}}},notes:{tools:{select:{order:1}}}};
   listeners.get('getSceneControlButtons')(controls2);
-  assert.equal(controls2.tokens.tools.stlQuickMapNote.button,true);
-  assert.equal(controls2.tokens.tools.stlFindQuickNote.button,true);
+  assert.equal(controls2.tokens.tools.stlMapNotesMenu.visible,true);
+  assert.equal(controls2.tokens.tools.stlQuickMapNote.visible,false);
   game.user.isGM=true;
 });
 
@@ -917,14 +918,14 @@ test('two simultaneous guide requests share one dialog and do not open duplicate
 });
 
 
-test('v0.1.11 display rename retains existing module ID and update manifest', async () => {
+test('v0.1.12 retains AFT Map Notes+ display name, existing ID and stable manifest', async () => {
   const {readFile} = await import('node:fs/promises');
   const manifest = JSON.parse(await readFile(new URL('../module.json', import.meta.url), 'utf8'));
   assert.equal(manifest.id, 'stl-quick-map-notes');
   assert.equal(manifest.title, 'AFT Map Notes+');
-  assert.equal(manifest.version, '0.1.11');
+  assert.equal(manifest.version, '0.1.12');
   assert.equal(manifest.manifest, 'https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json');
-  assert.match(manifest.download, /\/dist\/stl-quick-map-notes-v0\.1\.11\.zip$/);
+  assert.match(manifest.download, /\/dist\/stl-quick-map-notes-v0\.1\.12\.zip$/);
   assert.deepEqual(manifest.esmodules, ['scripts/main.mjs']);
 });
 
@@ -1082,7 +1083,7 @@ test('Find/Manage dialog always opens and stays accessible even with no visible 
   foundry.applications.api.DialogV2.wait=async config=>{captured=config;return 'close';};
   try {
     assert.equal(await showFindQuickNotes(),'close');
-    assert.equal(captured.window.title,'AFT Map Notes+ - This Scene');
+    assert.equal(captured.window.title,'Manage Map Note');
     assert.match(captured.content.innerHTML,/No accessible map notes found/);
     assert.match(captured.content.innerHTML,/data-note-action="refresh"/);
     assert.doesNotMatch(captured.content.innerHTML,/data-note-action="delete"/);
@@ -1102,7 +1103,7 @@ test('Find/Manage dialog delegates search, pan, move and refresh actions',async(
   foundry.applications.api.DialogV2.wait=async config=>{captured=config;return 'close';};
   try {
     assert.equal(await showFindQuickNotes(),'close');
-    assert.equal(captured.window.title,'AFT Map Notes+ - This Scene');
+    assert.equal(captured.window.title,'Manage Map Note');
     assert.match(captured.content.innerHTML,/data-note-action="pan"/);
     assert.match(captured.content.innerHTML,/data-note-action="move"/);
     assert.doesNotMatch(captured.content.innerHTML,/Private &lt;Secret&gt;|Fog-covered title|data-note-action="delete"/);
@@ -1229,4 +1230,169 @@ test('Finder excludes a stale canvas Note when native Scene.notes no longer cont
   assert.deepEqual(listVisibleSceneNotes(f.c,f.user).map(n=>n.id),['a','z']);
   liveIds.delete('z');
   assert.deepEqual(listVisibleSceneNotes(f.c,f.user).map(n=>n.id),['a']);
+});
+
+// v0.1.12: native single-tool hover menu and distinct pan/manage lists.
+test('Map Notes+ flyout has exactly three requested actions and no nested native toolbar controls',()=>{
+  const html=mapNotesMenuHtml();
+  assert.match(html,/Place Map Note/);
+  assert.match(html,/Find Map Note/);
+  assert.match(html,/Manage Map Note/);
+  assert.deepEqual([...html.matchAll(/data-map-notes-action="([^"]+)"/g)].map(m=>m[1]),
+    ['place','find','manage']);
+  assert.doesNotMatch(html,/data-note-action="delete"/);
+  assert.ok(listeners.has('renderSceneControls'));
+  assert.ok(listeners.has('canvasTearDown'));
+});
+
+test('Find Map Note is pan-only, Manage Map Note still offers permitted move and GM delete',()=>{
+  const f=finderFixture({user:{id:'g-1',isGM:true}});
+  const entries=listVisibleSceneNotes(f.c,f.user);
+  const find=findQuickNoteHtml(entries,3,true,'find');
+  const manage=findQuickNoteHtml(entries,3,true,'manage');
+  assert.match(find,/data-note-action="pan"/);
+  assert.match(find,/data-note-action="refresh"/);
+  assert.doesNotMatch(find,/data-note-action="move"|data-note-action="delete"|Selected tokens:/);
+  assert.match(manage,/data-note-action="pan"/);
+  assert.match(manage,/data-note-action="move"/);
+  assert.match(manage,/data-note-action="delete"/);
+  assert.match(manage,/Selected tokens: <strong>3/);
+  assert.throws(()=>findQuickNoteHtml(entries,3,true,'unknown'),/Invalid map note list mode/);
+});
+
+test('Find Map Note stays pan-only even with an injected Manage action event',async()=>{
+  const f=finderFixture({user:{id:'g-1',isGM:true}});
+  const oldCanvas=globalThis.canvas,oldWait=foundry.applications.api.DialogV2.wait;
+  const oldDocument=globalThis.document,oldUser=game.user;
+  globalThis.canvas=f.c;game.user=f.user;
+  globalThis.document={createElement(){return {innerHTML:''};}};
+  let captured,deleteCount=0;
+  f.c.scene.deleteEmbeddedDocuments=async()=>{deleteCount++;return [];};
+  foundry.applications.api.DialogV2.wait=async cfg=>{captured=cfg;return 'close';};
+  try {
+    assert.equal(await showFindQuickNotes('find'),'close');
+    assert.equal(captured.window.title,'Find Map Note');
+    assert.match(captured.content.innerHTML,/data-note-action="pan"/);
+    assert.doesNotMatch(captured.content.innerHTML,/data-note-action="move"|data-note-action="delete"/);
+    const handlers=new Map();
+    const root={contains(){return true;},addEventListener(n,cb){handlers.set(n,cb);},
+      querySelector(){return {set outerHTML(html){assert.doesNotMatch(html,/data-note-action="delete"/);}}},
+      querySelectorAll(){return [];}};
+    captured.render(null,{element:root});
+    const forbidden={dataset:{noteAction:'delete',noteId:'z'},disabled:false};
+    await handlers.get('click')({target:{closest:()=>forbidden}});
+    assert.equal(deleteCount,0);
+    const pan={dataset:{noteAction:'pan',noteId:'z'},disabled:false};
+    await handlers.get('click')({target:{closest:()=>pan}});
+    assert.equal(f.pans.at(-1).id,'z');
+    await assert.rejects(showFindQuickNotes('bad'),/Invalid map note list mode/);
+  } finally {globalThis.canvas=oldCanvas;globalThis.document=oldDocument;game.user=oldUser;
+    foundry.applications.api.DialogV2.wait=oldWait;}
+});
+
+function menuDomFixture() {
+  const docListeners=new Map(),windowListeners=new Map(),triggerListeners=new Map();
+  const popupListeners=new Map();
+  const doc={body:{append(el){doc.popup=el;el.isConnected=true;}},
+    defaultView:{innerWidth:1000,innerHeight:700,
+      addEventListener(name,fn){windowListeners.set(name,fn);},
+      removeEventListener(name){windowListeners.delete(name);}},
+    addEventListener(name,fn){docListeners.set(name,fn);},
+    removeEventListener(name){docListeners.delete(name);},
+    createElement(name){
+      assert.equal(name,'div');
+      return {style:{},isConnected:false,attrs:{},innerHTML:'',
+        setAttribute(k,v){this.attrs[k]=v;},
+        getBoundingClientRect(){return {width:220,height:176}},
+        addEventListener(k,fn){popupListeners.set(k,fn);},
+        querySelector(){return {focus(){doc.focusedChild=true;}};},
+        contains(node){return node?.inMenu===true;},
+        remove(){this.isConnected=false;doc.popup=null;}};
+    }};
+  const trigger={dataset:{},ownerDocument:doc,isConnected:true,style:{},attrs:{},
+    classList:{add(){}},getBoundingClientRect(){return {left:44,right:82,top:52,bottom:88}},
+    setAttribute(k,v){this.attrs[k]=v;},
+    addEventListener(k,fn){triggerListeners.set(k,fn);},
+    contains(node){return node===this;},
+    focus(){this.focused=true;triggerListeners.get('focus')?.();}};
+  const root={querySelector(){return trigger;}};
+  return {doc,trigger,root,docListeners,windowListeners,popupListeners,triggerListeners};
+}
+
+test('Map Notes+ hover anchors a fixed menu and Escape closes it without reopening',()=>{
+  const d=menuDomFixture();
+  assert.equal(findMapNotesTrigger(d.root),d.trigger);
+  assert.equal(bindMapNotesHover({element:d.root}),true);
+  assert.equal(bindMapNotesHover({element:d.root}),true); // idempotent on toolbar re-render.
+  assert.equal(d.trigger.attrs['aria-haspopup'],'menu');
+  d.triggerListeners.get('mouseenter')();
+  assert.ok(d.doc.popup);
+  assert.match(d.doc.popup.innerHTML,/Place Map Note/);
+  assert.equal(d.trigger.attrs['aria-expanded'],'true');
+  assert.equal(d.doc.popup.style.left,'90px');
+  assert.equal(d.doc.popup.style.top,'52px');
+  assert.ok(d.windowListeners.has('resize'));
+  let prevented=false;
+  d.docListeners.get('keydown')({key:'Escape',target:d.trigger,
+    preventDefault(){prevented=true;},stopPropagation(){}});
+  assert.equal(prevented,true);
+  assert.equal(d.doc.popup,null);
+  assert.equal(d.trigger.attrs['aria-expanded'],'false');
+  assert.equal(d.trigger.focused,true);
+  assert.equal(d.windowListeners.has('resize'),false);
+  assert.equal(d.docListeners.has('pointerdown'),false);
+});
+
+test('Map Notes+ click selection launches distinct Find dialog and closes hover menu',async()=>{
+  const d=menuDomFixture();
+  const f=finderFixture();
+  const oldCanvas=globalThis.canvas, oldUser=game.user;
+  const oldDocument=globalThis.document,oldWait=foundry.applications.api.DialogV2.wait;
+  game.user=f.user;globalThis.canvas=f.c;globalThis.document=d.doc;
+  let dialog=null;
+  foundry.applications.api.DialogV2.wait=async cfg=>{dialog=cfg;return 'close';};
+  try {
+    assert.equal(bindMapNotesHover({element:d.root}),true);
+    d.triggerListeners.get('focus')();
+    assert.ok(d.doc.popup);
+    const btn={inMenu:true,dataset:{mapNotesAction:'find'}};
+    let stopped=false;
+    d.popupListeners.get('click')({target:{closest:()=>btn},preventDefault(){},stopPropagation(){stopped=true;}});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(stopped,true);
+    assert.equal(d.doc.popup,null);
+    assert.equal(dialog.window.title,'Find Map Note');
+    assert.match(dialog.content.innerHTML,/data-note-action="pan"/);
+    assert.doesNotMatch(dialog.content.innerHTML,/data-note-action="move"/);
+  } finally {
+    closeMapNotesMenu();
+    globalThis.canvas=oldCanvas;game.user=oldUser;globalThis.document=oldDocument;
+    foundry.applications.api.DialogV2.wait=oldWait;
+  }
+});
+
+test('Map Notes+ popup closes on outside click and Scene teardown',()=>{
+  const d=menuDomFixture();
+  openMapNotesMenu(d.trigger);
+  assert.ok(d.doc.popup);
+  d.docListeners.get('pointerdown')({target:{}});
+  assert.equal(d.doc.popup,null);
+  openMapNotesMenu(d.trigger);
+  listeners.get('canvasTearDown')();
+  assert.equal(d.doc.popup,null);
+});
+
+test('Map Notes+ native tool click also opens menu for keyboard/touch users',async()=>{
+  const d=menuDomFixture(),oldControls=ui.controls;
+  ui.controls={element:d.root};
+  const controls={tokens:{tools:{select:{order:1}}}};
+  listeners.get('getSceneControlButtons')(controls);
+  try {
+    const action=controls.tokens.tools.stlMapNotesMenu.onChange;
+    action({target:d.trigger});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.ok(d.doc.popup);
+    assert.equal(d.doc.focusedChild,true);
+    assert.match(d.doc.popup.innerHTML,/Manage Map Note/);
+  } finally {closeMapNotesMenu();ui.controls=oldControls;}
 });

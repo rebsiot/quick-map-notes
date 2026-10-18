@@ -1,12 +1,12 @@
 /**
- * AFT Map Notes+ v0.1.11 — Foundry VTT 14, system-agnostic.
+ * AFT Map Notes+ v0.1.12 — Foundry VTT 14, system-agnostic.
  *
  * Deliberately uses native Scene Note and JournalEntry documents. It does not
  * override core notes, Journal permissions, or Scene Library imports.
  */
 
 const MODULE_ID = "stl-quick-map-notes";
-const VERSION = "0.1.11";
+const VERSION = "0.1.12";
 const ICON_DIR = `modules/${MODULE_ID}/icons`;
 
 export const ICONS = Object.freeze([
@@ -49,6 +49,16 @@ let playerFolderQueue = Promise.resolve();
 
 let armedPlacement = null;
 let activeTutorial = null;
+const MAP_MENU_TOOL = "stlMapNotesMenu";
+const MAP_MENU_ITEMS = Object.freeze([
+  {action:"place", label:"Place Map Note", icon:"fa-solid fa-location-dot"},
+  {action:"find", label:"Find Map Note", icon:"fa-solid fa-magnifying-glass"},
+  {action:"manage", label:"Manage Map Note", icon:"fa-solid fa-list-check"}
+]);
+let activeMapNotesMenu = null;
+let mapNotesMenuCloseTimer = null;
+let suppressMapNotesFocus = false;
+
 
 /** Escape the content of a Journal page, not rich-text or Markdown. */
 export function escapeHtml(raw) {
@@ -399,7 +409,8 @@ export function tutorialSlides(isGM = Boolean(game.user?.isGM)) {
     {
       title: "Place a map note",
       body: `<p>Open a Scene, select the <strong>person icon (Token Controls)</strong> on the left,
-        and click <strong>Place Quick Note</strong> (the map pin). Then click the map where the note belongs.</p>
+        and hover over (or click) <strong>Map Notes+</strong>, then choose <strong>Place Map Note</strong>.
+        Click the map where the note belongs.</p>
         <p>Press <strong>Escape</strong> to cancel before placing a note.</p>`
     },
     {
@@ -414,15 +425,16 @@ export function tutorialSlides(isGM = Boolean(game.user?.isGM)) {
     body: `<p>For GM notes, choose <strong>GM Only</strong>, pin visibility, readable, or individual player permissions.
       You can also link an existing permitted campaign Journal.</p>
       <p>Player notes are grouped under <strong>Party Map Notes</strong>, one Journal per Scene and one Page per note.
-      The GM can always edit or remove them. The <strong>Find / Manage Quick Notes</strong> list
-      pans to pins, moves selected tokens and lets the GM delete a pin without deleting its Page.</p>`
+      The GM can always edit or remove them. Use <strong>Find Map Note</strong> to pan to pins,
+      or <strong>Manage Map Note</strong> to move selected tokens and delete a pin without deleting its Page.</p>`
   });
   else steps.push({
     title: "Personal or shared notes",
     body: `<p>Choose <strong>Personal</strong> for a page intended only for you and the GM, or
       <strong>Shared with Party</strong> for one everyone can read.</p>
       <p>Each map has a Journal in <strong>Party Map Notes</strong>. Your note is a Page inside that Journal.
-      To add another Page, use <strong>Place Quick Note</strong>, not the Journal's Add Page button. Use <strong>Find / Manage Quick Notes</strong> at the top of Token Controls to list visible pins, pan, and optionally relocate selected tokens.</p>
+      To add another Page, use <strong>Map Notes+ &gt; Place Map Note</strong>, not the Journal's Add Page button.
+      <strong>Find Map Note</strong> pans to visible pins; <strong>Manage Map Note</strong> also lets you relocate selected tokens.</p>
       <p>A <strong>GM must be connected</strong> for players to create notes.</p>`
   });
   return steps;
@@ -1035,7 +1047,9 @@ export function listVisibleSceneNotes(sceneCanvas = globalThis.canvas, user = ga
 }
 
 /** The management dialog opens even for an empty Scene, with a Refresh button. */
-export function findQuickNoteHtml(notes, tokenCount = 0, canDelete = false) {
+export function findQuickNoteHtml(notes, tokenCount = 0, canDelete = false, mode = "manage") {
+  if (!["find", "manage"].includes(mode)) throw new Error("Invalid map note list mode.");
+  const managing = mode === "manage";
   return `<div class="stl-qmn-finder-body">
     <label class="stl-qmn-find-search"><span>Map notes on this Scene</span>
       <input type="search" placeholder="Search note titles" aria-label="Search map notes" autocomplete="off"></label>
@@ -1043,18 +1057,20 @@ export function findQuickNoteHtml(notes, tokenCount = 0, canDelete = false) {
       <span>${notes.length} accessible note${notes.length === 1 ? "" : "s"}.</span>
       <button type="button" data-note-action="refresh" title="Reload map notes and selected token count">Refresh list</button>
     </div>
-    <p class="stl-qmn-find-hint">Pan moves your view. Move selected relocates tokens you control as a group
-      (no pathfinding or collision checks). ${canDelete ? "Delete Pin removes the Scene pin only; its Journal Page remains." : ""}</p>
-    <p class="stl-qmn-find-hint">Selected tokens: <strong>${tokenCount}</strong>.
-      Select tokens before opening this panel or select them while it is open, then click Refresh list.</p>
+    <p class="stl-qmn-find-hint">${managing
+      ? `Pan moves your view. Move selected relocates tokens you control as a group (no pathfinding or collision checks).
+         ${canDelete ? "Delete Pin removes the Scene pin only; its Journal Page remains." : ""}`
+      : "Select Pan to center the view on a note without moving tokens or changing documents."}</p>
+    ${managing ? `<p class="stl-qmn-find-hint">Selected tokens: <strong>${tokenCount}</strong>.
+      Select tokens before opening this panel or select them while it is open, then click Refresh list.</p>` : ""}
     <div class="stl-qmn-find-results" role="list">
       ${notes.length ? notes.map(n => `<div class="stl-qmn-find-row" role="listitem" data-find-row data-search="${escapeHtml((n.name + " " + n.journalName).toLowerCase())}">
         <div class="stl-qmn-find-label"><strong>${escapeHtml(n.name)}</strong>
           ${n.journalName ? `<small>${escapeHtml(n.journalName)}</small>` : ""}</div>
         <button type="button" data-note-action="pan" data-note-id="${escapeHtml(n.id)}" aria-label="Pan to ${escapeHtml(n.name)}">Pan</button>
-        <button type="button" data-note-action="move" data-note-id="${escapeHtml(n.id)}" ${tokenCount ? "" : "disabled"}
-          aria-label="Move selected tokens to ${escapeHtml(n.name)}">Move selected</button>
-        ${canDelete ? `<button type="button" class="stl-qmn-delete-pin" data-note-action="delete" data-note-id="${escapeHtml(n.id)}"
+        ${managing ? `<button type="button" data-note-action="move" data-note-id="${escapeHtml(n.id)}" ${tokenCount ? "" : "disabled"}
+          aria-label="Move selected tokens to ${escapeHtml(n.name)}">Move selected</button>` : ""}
+        ${managing && canDelete ? `<button type="button" class="stl-qmn-delete-pin" data-note-action="delete" data-note-id="${escapeHtml(n.id)}"
           aria-label="Delete map pin ${escapeHtml(n.name)}">Delete Pin</button>` : ""}
       </div>`).join("") : '<p class="stl-qmn-find-zero">No accessible map notes found. The list can be refreshed without closing this window.</p>'}
     </div>
@@ -1188,7 +1204,8 @@ export async function deleteQuickNotePin(noteId, {sceneCanvas = globalThis.canva
 }
 
 /** A real Foundry DialogV2; controls stay visible while panning among notes. */
-export async function showFindQuickNotes() {
+export async function showFindQuickNotes(mode = "manage") {
+  if (!["find", "manage"].includes(mode)) throw new Error("Invalid map note list mode.");
   const sceneCanvas=globalThis.canvas, user=game.user;
   if (!sceneCanvas?.ready || !sceneCanvas.scene) {
     ui.notifications.warn("Open a Scene before finding map notes.");
@@ -1197,9 +1214,10 @@ export async function showFindQuickNotes() {
   const sceneId=sceneCanvas.scene.id;
   const content=document.createElement("div");
   content.innerHTML=findQuickNoteHtml(listVisibleSceneNotes(sceneCanvas,user),
-    sceneCanvas.tokens?.controlled?.length ?? 0,user?.isGM === true);
+    sceneCanvas.tokens?.controlled?.length ?? 0,user?.isGM === true,mode);
   return foundry.applications.api.DialogV2.wait({
-    window:{title:"AFT Map Notes+ - This Scene",icon:"fa-solid fa-list",resizable:true},
+    window:{title:mode === "find" ? "Find Map Note" : "Manage Map Note",
+      icon:mode === "find" ? "fa-solid fa-magnifying-glass" : "fa-solid fa-list-check",resizable:true},
     classes:["stl-qmn-finder"],
     position:{width:720},
     content,
@@ -1213,7 +1231,7 @@ export async function showFindQuickNotes() {
         }
         const body=root.querySelector(".stl-qmn-finder-body");
         if (body) body.outerHTML=findQuickNoteHtml(listVisibleSceneNotes(sceneCanvas,user),
-          sceneCanvas.tokens?.controlled?.length ?? 0,user?.isGM === true);
+          sceneCanvas.tokens?.controlled?.length ?? 0,user?.isGM === true,mode);
       };
       const filter = (search) => {
         let count=0;
@@ -1232,6 +1250,7 @@ export async function showFindQuickNotes() {
       root.addEventListener("click", async event => {
         const button=event.target?.closest?.("button[data-note-action]");
         if(!button || !root.contains(button) || button.disabled) return;
+        if (mode === "find" && !["pan", "refresh"].includes(button.dataset.noteAction)) return;
         button.disabled=true;
         try {
           if(button.dataset.noteAction==="refresh") {
@@ -1309,6 +1328,171 @@ function armPlacement() {
   ui.notifications.info("Click the map to place a note. Press Escape to cancel.");
 }
 
+/** Exactly three actions; labels are text, not user-supplied HTML. */
+export function mapNotesMenuHtml() {
+  return `<div class="stl-qmn-map-menu-title">Map Notes+</div>
+    ${MAP_MENU_ITEMS.map(item => `<button type="button" role="menuitem"
+      data-map-notes-action="${item.action}"><i class="${item.icon}" aria-hidden="true"></i>
+      <span>${item.label}</span></button>`).join("")}`;
+}
+
+function reportMapMenuError(error) {
+  console.error(`[${MODULE_ID}] Map Notes+ action failed`, error);
+  ui.notifications.error(`AFT Map Notes+: ${error.message || error}`);
+}
+
+/** Explicit action dispatch, independent of the Scene Controls renderer. */
+export async function runMapNotesMenuAction(action) {
+  if (action === "place") { armPlacement(); return true; }
+  if (action === "find") return showFindQuickNotes("find");
+  if (action === "manage") return showFindQuickNotes("manage");
+  throw new Error("Invalid Map Notes+ action.");
+}
+
+function cancelMapMenuClose() {
+  if (mapNotesMenuCloseTimer !== null) clearTimeout(mapNotesMenuCloseTimer);
+  mapNotesMenuCloseTimer = null;
+}
+
+function scheduleMapMenuClose() {
+  cancelMapMenuClose();
+  mapNotesMenuCloseTimer = setTimeout(() => closeMapNotesMenu(), 180);
+}
+
+export function closeMapNotesMenu({restoreFocus = false} = {}) {
+  cancelMapMenuClose();
+  const state = activeMapNotesMenu;
+  if (!state) return;
+  activeMapNotesMenu = null;
+  state.doc.removeEventListener("pointerdown",state.outside,true);
+  state.doc.removeEventListener("keydown",state.keydown,true);
+  state.win?.removeEventListener?.("resize",state.position);
+  state.doc.removeEventListener("scroll",state.position,true);
+  state.trigger?.setAttribute?.("aria-expanded","false");
+  state.menu.remove();
+  if (restoreFocus && state.trigger?.isConnected) {
+    suppressMapNotesFocus = true;
+    try {state.trigger.focus?.();}
+    finally {suppressMapNotesFocus = false;}
+  }
+}
+
+/** Position a fixed popup next to the native Token Control tool. */
+function positionMapNotesMenu(trigger, menu, win) {
+  const rect=trigger.getBoundingClientRect();
+  const box=menu.getBoundingClientRect();
+  const vw=win?.innerWidth ?? 1024, vh=win?.innerHeight ?? 768;
+  const width=box.width || 196, height=box.height || 150;
+  const right=rect.right + 8;
+  const left=right + width > vw - 8 ? rect.left - width - 8 : right;
+  menu.style.left=`${Math.max(8,Math.min(vw-width-8,left))}px`;
+  menu.style.top=`${Math.max(8,Math.min(vh-height-8,rect.top))}px`;
+}
+
+/** Open on hover, keyboard focus, or click; never mutate a Foundry document. */
+export function openMapNotesMenu(trigger, {focusFirst = false} = {}) {
+  if (!trigger?.ownerDocument?.body || typeof trigger.getBoundingClientRect !== "function") return false;
+  cancelMapMenuClose();
+  if (activeMapNotesMenu?.trigger === trigger && activeMapNotesMenu.menu.isConnected) {
+    if (focusFirst) activeMapNotesMenu.menu.querySelector("button")?.focus?.();
+    return true;
+  }
+  closeMapNotesMenu();
+  const doc=trigger.ownerDocument, win=doc.defaultView;
+  const menu=doc.createElement("div");
+  menu.className="stl-qmn-map-menu";
+  menu.id="stl-qmn-map-menu";
+  menu.setAttribute("role","menu");
+  menu.setAttribute("aria-label","Map Notes+");
+  menu.innerHTML=mapNotesMenuHtml();
+  doc.body.append(menu);
+  const position=() => {
+    if (trigger.isConnected === false) {closeMapNotesMenu(); return;}
+    positionMapNotesMenu(trigger,menu,win);
+  };
+  const outside=event => {
+    if (!menu.contains(event.target) && !trigger.contains(event.target)) closeMapNotesMenu();
+  };
+  const keydown=event => {
+    if (event.key !== "Escape") return;
+    if (!menu.contains(event.target) && !trigger.contains(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeMapNotesMenu({restoreFocus:true});
+  };
+  menu.addEventListener("mouseenter",cancelMapMenuClose);
+  menu.addEventListener("mouseleave",scheduleMapMenuClose);
+  menu.addEventListener("focusin",cancelMapMenuClose);
+  menu.addEventListener("focusout",event => {
+    if (!menu.contains(event.relatedTarget) && event.relatedTarget !== trigger) scheduleMapMenuClose();
+  });
+  menu.addEventListener("click", event => {
+    const button=event.target?.closest?.("button[data-map-notes-action]");
+    if (!button || !menu.contains(button)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const action=button.dataset.mapNotesAction;
+    closeMapNotesMenu();
+    void runMapNotesMenuAction(action).catch(reportMapMenuError);
+  });
+  trigger.setAttribute?.("aria-expanded","true");
+  activeMapNotesMenu={trigger,menu,doc,win,position,outside,keydown};
+  doc.addEventListener("pointerdown",outside,true);
+  doc.addEventListener("keydown",keydown,true);
+  doc.addEventListener("scroll",position,true);
+  win?.addEventListener?.("resize",position);
+  position();
+  if (focusFirst) menu.querySelector("button")?.focus?.();
+  return true;
+}
+
+/** v14 SceneControls tool DOM: match data-tool/name or its accessible label. */
+export function findMapNotesTrigger(root) {
+  const candidate=root?.querySelector?.(
+    `[data-tool="${MAP_MENU_TOOL}"], [data-name="${MAP_MENU_TOOL}"],
+     [data-tooltip="Map Notes+"], [aria-label="Map Notes+"], [title="Map Notes+"]`);
+  if (!candidate) return null;
+  return candidate.matches?.("button, [role=button]") ? candidate :
+    candidate.querySelector?.("button, [role=button]") ?? candidate;
+}
+
+export function bindMapNotesHover(app) {
+  const root=app?.element ?? app;
+  const trigger=findMapNotesTrigger(root);
+  if (!trigger) {
+    if (activeMapNotesMenu) closeMapNotesMenu();
+    return false;
+  }
+  if (trigger.dataset?.stlMapNotesBound === "1") return true;
+  if (trigger.dataset) trigger.dataset.stlMapNotesBound="1";
+  trigger.classList?.add?.("stl-qmn-map-menu-trigger");
+  trigger.setAttribute?.("aria-haspopup","menu");
+  trigger.setAttribute?.("aria-controls","stl-qmn-map-menu");
+  trigger.setAttribute?.("aria-expanded","false");
+  trigger.addEventListener("mouseenter",() => openMapNotesMenu(trigger));
+  trigger.addEventListener("mouseleave",scheduleMapMenuClose);
+  trigger.addEventListener("focus",() => {if (!suppressMapNotesFocus) openMapNotesMenu(trigger);});
+  return true;
+}
+
+async function openMapNotesMenuFromToolEvent(event) {
+  const root=ui.controls?.element;
+  const trigger=findMapNotesTrigger(root) ?? event?.target?.closest?.(
+    `[data-tool="${MAP_MENU_TOOL}"], [data-name="${MAP_MENU_TOOL}"]`) ?? event?.currentTarget;
+  if (openMapNotesMenu(trigger,{focusFirst:true})) return;
+  // Some custom Foundry toolbar themes omit identifiable data attributes.
+  // A native DialogV2 choice still keeps the three actions usable by click.
+  const content=document.createElement("div");
+  content.textContent="Choose a Map Notes+ action.";
+  const action=await foundry.applications.api.DialogV2.wait({
+    window:{title:"Map Notes+",icon:"fa-solid fa-map-location-dot"},
+    content,
+    buttons:[...MAP_MENU_ITEMS.map(item => ({action:item.action,label:item.label})),
+      {action:"close",label:"Close"}],rejectClose:false
+  });
+  if (MAP_MENU_ITEMS.some(item => item.action === action)) return runMapNotesMenuAction(action);
+}
+
 if (globalThis.Hooks) {
   Hooks.once("init", () => {
     CONFIG.queries[PLAYER_QUERY] = handlePlayerNoteQuery;
@@ -1330,34 +1514,40 @@ if (globalThis.Hooks) {
     });
   });
 
-  // Foundry v14 has native tools but no nested tool menus. Keep the pair
-  // adjacent under primary Token Controls rather than creating a fragile flyout.
-  // Retain the old stlQuickMapNote tool key for compatibility with saved tools.
+  // Only one discoverable Map Notes+ button in Token Controls. The three
+  // actions live in its hover/click submenu, without deactivating the Token
+  // layer (which would lose the user's selected tokens).
   Hooks.on("getSceneControlButtons", controls => {
     if (!game.user || !controls?.tokens?.tools) return;
     const tools = controls.tokens.tools;
-    // Put the management button FIRST in the Token palette. v0.1.9 appended
-    // it to the very bottom, which can leave it out of view on short screens.
-    // Signed integer order values are sorted numerically by v14 SceneControls.
-    const first = Math.min(0, ...Object.values(tools).map(t => Number(t.order)).filter(Number.isFinite)) - 2;
-    tools.stlFindQuickNote = {
-      name: "stlFindQuickNote", title: "Find / Manage Quick Notes",
-      icon: "fa-solid fa-list", order:first,
-      button: true, visible: true,
-      onChange: () => { void showFindQuickNotes().catch(error => {
-        console.error(`[${MODULE_ID}] Cannot open AFT Map Notes+ manager`,error);
-        ui.notifications.error(`AFT Map Notes+: ${error.message}`);
-      }); }
-    };
+    const first = Math.min(0, ...Object.values(tools).map(t => Number(t.order)).filter(Number.isFinite)) - 1;
+    // Preserve legacy tool identifiers for saved macros/third-party callers,
+    // but hide the old duplicated icons from the actual toolbar.
     tools.stlQuickMapNote = {
-      name: "stlQuickMapNote", title: "Place Quick Note",
-      icon: "fa-solid fa-location-dot", order:first+1,
-      button: true, visible: true,
-      onChange: () => armPlacement()
+      name:"stlQuickMapNote",title:"Place Map Note (legacy)",
+      icon:"fa-solid fa-location-dot",order:first+1,button:true,visible:false,
+      onChange:() => armPlacement()
+    };
+    tools.stlFindQuickNote = {
+      name:"stlFindQuickNote",title:"Manage Map Note (legacy)",
+      icon:"fa-solid fa-list",order:first+2,button:true,visible:false,
+      onChange:() => {void showFindQuickNotes("manage").catch(reportMapMenuError);}
+    };
+    tools[MAP_MENU_TOOL] = {
+      name:MAP_MENU_TOOL,title:"Map Notes+",
+      icon:"fa-solid fa-map-location-dot",order:first,button:true,visible:true,
+      onChange:event => {void openMapNotesMenuFromToolEvent(event).catch(reportMapMenuError);}
     };
   });
 
+  // SceneControls may re-render or replace just the tools part; rebind the
+  // current native button without replacing its markup or altering core tools.
+  Hooks.on("renderSceneControls", app => {
+    bindMapNotesHover(app);
+  });
+
   Hooks.on("canvasTearDown", () => {
+    closeMapNotesMenu();
     if (armedPlacement) armedPlacement();
   });
 }

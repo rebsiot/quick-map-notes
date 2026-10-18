@@ -7,29 +7,29 @@ Place map pins quickly and store the notes in native Foundry Journals. Players c
 ## Player quick start
 
 1. Open a Scene and select the **person icon (Token Controls)** in the left toolbar.
-2. Click **Place Quick Note** (map pin), then click the point on the map.
-3. Enter a title and description. Choose **Personal** (only you and the GM) or **Shared with Party** (everyone can read; you and the GM can edit).
-4. Optionally choose/upload an icon and select its color and size. Click **Create Map Note**.
-5. Find your note as a Page in the Journal named for that map, under **Party Map Notes**. Add more pins with **Place Quick Note**.
+2. Hover over **Map Notes+** (or click it), then choose **Place Map Note** and click the map.
+3. Enter a title and description. Choose **Personal** (you and the GM) or **Shared with Party** (everyone can read; you and the GM can edit).
+4. Optionally choose/upload an icon and adjust its color and size. Click **Create Map Note**.
+5. Find your note in the Journal named for that map under **Party Map Notes**, or choose **Map Notes+ > Find Map Note** to pan directly to its pin.
 
 A **GM must be online** when a player creates a map note. Players use the Quick Map Note button to add Pages; they do not need ownership of the whole map Journal.
 
 ## GM quick start
 
-1. Open a Scene, then choose **Token Controls > Place Quick Note** and click the map.
+1. Open a Scene, then choose **Token Controls > Map Notes+ > Place Map Note** and click the map.
 2. Enter the note details and choose an icon/color if desired.
 3. Choose who can see it: **GM Only**, **See Pin**, **Can Read**, or **Specific Players**. You can also link an eligible existing Journal without changing its permissions.
 4. Create the note. Manage its linked Journal/Page and pin using Foundry's native controls.
 
 ## Find and manage notes (players and GMs)
 
-In **Token Controls** (the person icon), the **Find / Manage Quick Notes** list button is now the **first tool**, beside **Place Quick Note**. Click it to open a searchable window that stays open while you pan or move tokens. It opens even when a map has no visible notes.
+Under **Token Controls**, hover over **Map Notes+** to reveal three choices. Click the same icon to open the menu without hovering (useful on touchscreens and for keyboard navigation).
 
-1. **Pan** next to a note to center the view on its map pin without moving anything.
-2. **Move selected** relocates your currently selected, controllable tokens as a group to that pin. You can select tokens while the window is open and click **Refresh list** to update the movement buttons. This is direct teleportation, not pathfinding or collision-checked movement.
-3. **Delete Pin** (GM only) asks for confirmation and removes **only the map pin**. Its linked Journal Entry and Page stay intact. The list refreshes afterward.
+- **Place Map Note** starts the current map-click and Journal/Page workflow.
+- **Find Map Note** opens a searchable list of accessible notes on this Scene. **Pan** centers the view on a pin without moving tokens or changing notes.
+- **Manage Map Note** opens the searchable list with **Pan** and **Move selected**. Moving relocates your selected, controllable tokens together; it is direct movement, not pathfinding or collision-checking. GMs also see **Delete Pin**, which requires confirmation and removes only the Scene pin, not its Journal/Page.
 
-**Refresh list** reloads the current Scene's notes without closing the window. Players only see notes visible to them and accessible through their Journal and Page permissions. GMs can also manage saved Scene pins that are not currently drawn as canvas placeables. If no eligible notes are found, the manager shows an empty-list message instead of silently failing to open.
+Both lists offer **Refresh list** and work even when the Scene has no accessible notes. Players see only notes that meet the map visibility and native Journal/Page access checks. GMs can manage saved Scene pins that are not currently drawn on the canvas.
 
 ## First-login tutorial
 
@@ -50,9 +50,9 @@ For manual ZIP replacement, stop Foundry and install the complete folder at `Dat
 
 ## Beta limitations
 
-The module has passed automated/mock tests, **not** the full Foundry v14 multiplayer privacy test. Before using private player notes for sensitive information, test with a GM and two players: Page ownership, private pin/title visibility, adding a note to an existing Scene Journal, and refresh/reconnect. Earlier player permission errors have occurred; automated checks cannot establish the live behavior. The Find/Manage window, GM-only Delete Pin confirmation, and direct token move also require a live v14 toolbar/canvas/permission test.
+The module has passed automated/mock tests, **not** the full Foundry v14 multiplayer privacy test. Before using private player notes for sensitive information, test with a GM and two players: Page ownership, private pin/title visibility, adding a note to an existing Scene Journal, and refresh/reconnect. Earlier player permission errors have occurred; automated checks cannot establish the live behavior. The new hover menu, Find and Manage windows, GM-only Delete Pin confirmation, and direct token move also require a live v14 toolbar/canvas/permission test.
 
-Updating this release does **not** migrate or alter existing Journals, Pages, pins, IDs, flags, or saved tutorial preferences. This update changes only user-visible naming; the internal module ID, note data and permissions remain unchanged. Restore the [v0.1.10 package](https://github.com/rebsiot/quick-map-notes/releases/tag/v0.1.10) to roll back the code. To undo world edits made during play, restore a matching world backup separately.
+Updating this release does **not** migrate or alter existing Journals, Pages, pins, IDs, flags, or saved tutorial preferences. The existing internal module ID, note data, and permissions remain unchanged. Restore the [v0.1.11 package](https://github.com/rebsiot/quick-map-notes/releases/tag/v0.1.11) to roll back the module code. To undo world edits made during play, restore a matching world backup separately.
 
 ## More information
 
