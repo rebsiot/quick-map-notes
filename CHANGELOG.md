@@ -1,5 +1,12 @@
 # Release Notes
 
+## v0.1.14 - 2026-10-18
+
+- **Changed:** In Token Controls, **Map Notes+** is placed after the first five visible tools (approximately sixth) instead of always appearing first. If a smaller tool palette has fewer than five existing tools, Map Notes+ appears at the end. Hidden compatibility aliases do not take up visible positions.
+- **Preserved:** Place / Find / Manage hover actions, token toolbar restoration, selected-token handling, GM-only deletion, Journal/Page permissions, IDs, icons, saved notes and user preferences remain unchanged. No migration or changes to other modules' tool orders.
+- **Upgrade:** Back up your world and the module's persistent icons, then update the module and refresh Foundry clients. Restore v0.1.13 for code rollback; module downgrade does not reverse edits made to world data during play.
+- **Testing:** Node automated/mocked tests cover sixth-slot ordering, small tool palettes, hidden tools, native-tool order preservation and repeat rendering. Actual Foundry v14 toolbar placement, hover menu operation and the GM + two-player privacy test remain **live-unverified**. Packaged beta.
+
 ## v0.1.13 - 2026-10-18
 
 - **Fixed:** Leaving the **Map Notes+** hover menu no longer leaves players or GMs stuck on the Journal Notes toolbar when the menu was opened from Token Controls. The module uses Foundry v14's native `SceneControls.activate` to return to **Token Controls > Select Tokens** if Notes became active.

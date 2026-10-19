@@ -1,26 +1,25 @@
-# AFT Map Notes+ v0.1.13 - Test Report
+# AFT Map Notes+ v0.1.14 - Test Report
 
-**Baseline:** Verified `rebsiot/quick-map-notes` GitHub v0.1.12 at commit `3a9206ec334d435560ab8d1bea83cf5b4973a8c1`; ZIP 62,871 bytes, SHA-256 `1c7b097f72d5bf50bff13b6d309f16c82558459a8c99fbcfff6f5778e12c8d37`. The source and module manifest inside the ZIP were inspected. The user's actual installed build remains uninspected; a user-reported screen behavior is not proof of its exact source.
+**Verified source baseline:** `rebsiot/quick-map-notes` v0.1.13, exact GitHub commit `114e199ae23a5758bb66f807e980e552c1a9b7ce`; local release ZIP SHA-256 `d852acccb5e4d9e6e2db041869ae1546f4c313a2cb588eeb3d3cb2aca2169b0e`. The extracted script git blob `2c55dc39dcce63fab0b00c4cd031dc7c6975d63c` matches GitHub. Installed live version is unknown.
 
-## Scope
+## Change
 
-Reported live regression in v0.1.12: on moving off Map Notes+, the Journal Notes tool palette remains selected instead of returning to Token Controls. Fix is limited to local control-layer restoration after hover dismissal/menu actions or a toolbar rerender; selected tokens can be locally reselected when lost, using normal native permission checks. Intentionally switching to another toolbar is respected. No world-document schema, Journal/Page permissions, map-pin data, or scene/token coordinates change during installation.
+A single visible Map Notes+ icon now requests the sixth tool position in Foundry v14 Token Controls, after five visible tools. It uses a numeric gap between existing tool orders to avoid modifying native or third-party tool records; with fewer than five visible tools, it appends at the end. Legacy hidden tools do not influence the calculation, including on rerender. Tied existing orders stay unchanged, so exact placement may vary in heavily customized toolbars. No Note, Journal, Token or world-data migration.
 
-## Automated and mock-tested
+## Automated/mock tests
 
 - `node --check scripts/main.mjs`: passed.
-- `node --test tests/quick-map-notes.test.mjs`: **80 passed; 0 failed**. New regressions cover v14 `SceneControls.activate({control:'tokens',tool:'select'})`, preservation of selected native Tokens, hover-leave timing, action dispatch while Notes is active, restoration when Scene Controls re-renders, deliberate outside toolbar clicks and keyboard focus changes (no forced restoration), other layers and Scene mismatch (no forced restoration), and an early Notes state at hover opening.
-- Existing native Journal, page visibility, player/GM permissions, pin lifecycle, token grouping, Find/Manage windows, and legacy control IDs remain covered by the preexisting tests.
-- ZIP contents: complete module, versioned manifest, runtime files, CSS, icons, docs, license and tests; `unzip -tq` and manifest/package parity check must pass at release time.
+- `node --test tests/quick-map-notes.test.mjs`: **85/85 tests passed; zero failures**.
+- Newly added regression tests verify placement after five visible tools, preservation of native tool order, hidden-tool exclusion, rerender stability, minimal toolbar fallback, tied native order behavior, and no change to Notes toolbar.
+- Full ZIP integrity and manifest/runtime parity: passed; 22 package files, no world data or internal handoff included.
 
-## Foundry live tests
+## Live Foundry tests
 
-- **Regression observation:** User reported the previous v0.1.12 behavior in a live Foundry session.
-- **Fix live test:** Not run. Hover Map Notes+, move off without selecting a command, confirm the green Token Controls selection and the Select Tokens tool remain active; repeat after Find > Pan and after Place > Cancel. Select two tokens before opening and verify they remain selected.
-- **Remaining security test:** GM plus two players: Personal/Party Journal Page ownership, hidden pin/title visibility, updating existing Scene Journal, refresh/reconnect, authorized token movement and GM-only Delete Pin.
+- This new tool order has **not** been tested in the user's live Foundry v14 environment. First verify on the user's actual toolbar that Map Notes+ sits around sixth, the three-option flyout still works, and Token Controls / selected tokens remain selected after hover dismissal.
+- GM plus two player clients: verify private Journal Page/pin titles and permission boundaries, existing Scene Journal reuse, refresh/reconnect, authorized token relocation, and GM-only pin deletion. **Not yet run / live unverified.**
 
-## Backup and rollback
+## Upgrade / rollback
 
-Back up world Journals/Pages, Scene Notes, token positions, and the persistent uploaded icon storage separately before installing. Existing module ID/flags/permissions remain unchanged; there is no migration. Restore v0.1.12 code as needed. Code rollback does not reverse any actual token movement, journal edits, or pin deletions during play; use a matching world backup to reverse those.
+Back up the world, installed module and persistent uploaded icon storage before upgrading. Use the same module ID and Foundry manifest to update; hard-refresh clients. Code rollback restores the complete v0.1.13 ZIP. If users edit Journals, move Tokens, or delete pins after upgrading, only a matching world backup can reverse those world edits.
 
-**Status:** Automated/mock-tested packaged beta. No live confirmation of the v0.1.13 fix.
+**Status:** Packaged beta, automated/mock-tested only until the user confirms live behavior.

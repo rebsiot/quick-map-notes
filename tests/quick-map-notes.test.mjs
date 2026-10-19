@@ -79,7 +79,7 @@ globalThis.JournalEntry={
 globalThis.ui={notifications:{info(){},error(){},warn(){}}};
 globalThis.canvas={scene,ready:true,dimensions:{sceneRect:{x:0,y:0,width:500,height:500}}};
 
-const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal,canReadPlayerMapJournal,tutorialSlides,isTutorialDismissed,dismissQuickMapTutorial,showQuickMapTutorial,listVisibleSceneNotes,findQuickNoteHtml,panToQuickNote,planSelectedTokensToNote,moveSelectedTokensToQuickNote,deleteQuickNotePin,showFindQuickNotes,mapNotesMenuHtml,runMapNotesMenuAction,openMapNotesMenu,closeMapNotesMenu,findMapNotesTrigger,bindMapNotesHover,restoreMapNotesTokenControls} = await import('../scripts/main.mjs');
+const {ICONS,escapeHtml,journalHtml,hexColor,buildOwnership,buildPlayerOwnership,makeNoteData,createQuickMapNote,uploadNewIcon, isModuleSuppliedJournal, isRulesReferenceName, isRulesReferenceJournal, buildJournalOptions,playerIconValid,validatePlayerNoteRequest,encodePlayerImage,decodePlayerImage,submitPlayerNoteRequest,verifyPlayerNoteQuery,handlePlayerNoteQuery,ensurePlayerMapNotesFolder,findPlayerMapJournal,canReadPlayerMapJournal,tutorialSlides,isTutorialDismissed,dismissQuickMapTutorial,showQuickMapTutorial,listVisibleSceneNotes,findQuickNoteHtml,panToQuickNote,planSelectedTokensToNote,moveSelectedTokensToQuickNote,deleteQuickNotePin,showFindQuickNotes,mapNotesMenuHtml,runMapNotesMenuAction,openMapNotesMenu,closeMapNotesMenu,findMapNotesTrigger,bindMapNotesHover,restoreMapNotesTokenControls,mapNotesMenuOrder} = await import('../scripts/main.mjs');
 
 const baseForm = ()=>({
   title:'Old Warehouse',description:'Possible <danger> & clues',
@@ -97,7 +97,7 @@ test('Foundry 14 Token Controls shows one Map Notes+ button and preserves hidden
   listeners.get('getSceneControlButtons')(controls);
   const tools=controls.tokens.tools;
   assert.equal(tools.stlMapNotesMenu.title,'Map Notes+');
-  assert.equal(tools.stlMapNotesMenu.order,-1);
+  assert.equal(tools.stlMapNotesMenu.order,3); // Append if fewer than five visible tools.
   assert.equal(tools.stlMapNotesMenu.visible,true);
   assert.equal(tools.stlMapNotesMenu.button,true);
   assert.equal(tools.stlQuickMapNote.visible,false);
@@ -112,6 +112,63 @@ test('Foundry 14 Token Controls shows one Map Notes+ button and preserves hidden
   assert.equal(controls2.tokens.tools.stlMapNotesMenu.visible,true);
   assert.equal(controls2.tokens.tools.stlQuickMapNote.visible,false);
   game.user.isGM=true;
+});
+
+
+test('Map Notes+ requests sixth visible slot between native tools without reordering them',()=>{
+  const nativeTools=Object.fromEntries(Array.from({length:9},(_,i)=>
+    [`native-${i+1}`,{name:`native-${i+1}`,order:(i+1)*10,visible:true}]));
+  const snapshot=structuredClone(nativeTools);
+  const controls={tokens:{tools:nativeTools},notes:{tools:{create:{order:1}}}};
+  listeners.get('getSceneControlButtons')(controls);
+  const tools=controls.tokens.tools;
+  assert.equal(tools.stlMapNotesMenu.order,55);
+  assert.equal(Object.entries(tools)
+    .filter(([name,t])=>t.visible!==false && Number.isFinite(Number(t.order)))
+    .sort((a,b)=>a[1].order-b[1].order)
+    .findIndex(([name])=>name==='stlMapNotesMenu'),5);
+  for(const [name,source] of Object.entries(snapshot)) assert.deepEqual(tools[name],source);
+  assert.equal(controls.notes.tools.stlMapNotesMenu,undefined);
+});
+
+test('Map Notes+ ordering ignores hidden legacy and third-party tools and is stable after rerender',()=>{
+  const tools={
+    s:{order:0}, a:{order:10}, hidden:{order:11,visible:false},
+    b:{order:20}, c:{order:30}, d:{order:40}, e:{order:50}, f:{order:60},
+    stlQuickMapNote:{order:-1000,visible:false}, stlFindQuickNote:{order:-999,visible:false},
+    stlMapNotesMenu:{order:-888,visible:true}
+  };
+  assert.equal(mapNotesMenuOrder(tools),45);
+  const controls={tokens:{tools}};
+  listeners.get('getSceneControlButtons')(controls);
+  assert.equal(tools.stlMapNotesMenu.order,45);
+  listeners.get('getSceneControlButtons')(controls);
+  assert.equal(tools.stlMapNotesMenu.order,45);
+  assert.equal(tools.stlQuickMapNote.visible,false);
+  assert.equal(tools.stlFindQuickNote.visible,false);
+});
+
+test('Map Notes+ sixth slot falls at end with exactly five visible tools',()=>{
+  const tools=Object.fromEntries([1,2,3,4,5].map(n=>[`native${n}`,{order:n*10}]));
+  assert.equal(mapNotesMenuOrder(tools),51);
+  listeners.get('getSceneControlButtons')({tokens:{tools}});
+  assert.equal(tools.stlMapNotesMenu.order,51);
+});
+
+test('Map Notes+ does not reorder tied native tools or rely on array insertion order',()=>{
+  const tools={four:{order:40},three:{order:30},one:{order:10},two:{order:20},
+    fiveA:{order:50}, fiveB:{order:50}, seven:{order:70}};
+  // When the fifth and sixth native tools are tied at order 50, place the
+  // module after their tied group, rather than change either existing tool.
+  assert.equal(mapNotesMenuOrder(tools),60);
+  assert.deepEqual(Object.fromEntries(Object.entries(tools).map(([n,t])=>[n,t.order])),
+    {four:40,three:30,one:10,two:20,fiveA:50,fiveB:50,seven:70});
+});
+
+test('Map Notes+ ordering handles empty controls and unspecified orders',()=>{
+  assert.equal(mapNotesMenuOrder({}),1);
+  assert.equal(mapNotesMenuOrder({select:{},ruler:{},target:{}}),3);
+  assert.equal(mapNotesMenuOrder({select:{order:20},old:{order:10,visible:false}}),21);
 });
 
 test('control hook tolerates unavailable Token Controls without altering Journal Notes',()=>{
@@ -918,14 +975,14 @@ test('two simultaneous guide requests share one dialog and do not open duplicate
 });
 
 
-test('v0.1.13 retains AFT Map Notes+ display name, existing ID and stable manifest', async () => {
+test('v0.1.14 retains AFT Map Notes+ display name, existing ID and stable manifest', async () => {
   const {readFile} = await import('node:fs/promises');
   const manifest = JSON.parse(await readFile(new URL('../module.json', import.meta.url), 'utf8'));
   assert.equal(manifest.id, 'stl-quick-map-notes');
   assert.equal(manifest.title, 'AFT Map Notes+');
-  assert.equal(manifest.version, '0.1.13');
+  assert.equal(manifest.version, '0.1.14');
   assert.equal(manifest.manifest, 'https://raw.githubusercontent.com/rebsiot/quick-map-notes/main/module.json');
-  assert.match(manifest.download, /\/dist\/stl-quick-map-notes-v0\.1\.13\.zip$/);
+  assert.match(manifest.download, /\/dist\/stl-quick-map-notes-v0\.1\.14\.zip$/);
   assert.deepEqual(manifest.esmodules, ['scripts/main.mjs']);
 });
 

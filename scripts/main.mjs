@@ -1,12 +1,12 @@
 /**
- * AFT Map Notes+ v0.1.13 — Foundry VTT 14, system-agnostic.
+ * AFT Map Notes+ v0.1.14 — Foundry VTT 14, system-agnostic.
  *
  * Deliberately uses native Scene Note and JournalEntry documents. It does not
  * override core notes, Journal permissions, or Scene Library imports.
  */
 
 const MODULE_ID = "stl-quick-map-notes";
-const VERSION = "0.1.13";
+const VERSION = "0.1.14";
 const ICON_DIR = `modules/${MODULE_ID}/icons`;
 
 export const ICONS = Object.freeze([
@@ -1549,6 +1549,32 @@ async function openMapNotesMenuFromToolEvent(event) {
   if (MAP_MENU_ITEMS.some(item => item.action === action)) return runMapNotesMenuAction(action);
 }
 
+/**
+ * Request the sixth visible tool slot in Token Controls. Foundry sorts tools
+ * by their numeric order; choose a value between the fifth and sixth existing
+ * tools without modifying native/third-party tools. When fewer than five
+ * visible tools exist, append Map Notes+ after the last one. Hidden legacy
+ * aliases and our own prior registration never affect its position on rerender.
+ */
+export function mapNotesMenuOrder(tools) {
+  const existing = Object.entries(tools ?? {})
+    .filter(([name, tool]) => ![MAP_MENU_TOOL, "stlQuickMapNote", "stlFindQuickNote"].includes(name) &&
+      tool && tool.visible !== false)
+    .map(([, tool], index) => {
+      const numericOrder = Number(tool.order);
+      return {order: Number.isFinite(numericOrder) ? numericOrder : index, index};
+    })
+    .sort((a, b) => a.order - b.order || a.index - b.index);
+  const fifth = existing[4]?.order;
+  if (fifth === undefined) return (existing.at(-1)?.order ?? 0) + 1;
+  const sixth = existing[5]?.order;
+  if (sixth > fifth) return fifth + (sixth - fifth) / 2;
+  // Equal native orders have no numeric gap. Insert after that tied group;
+  // maintaining existing tool order takes priority over an exact slot.
+  const nextDistinct = existing.find(tool => tool.order > fifth)?.order;
+  return nextDistinct === undefined ? fifth + 1 : fifth + (nextDistinct - fifth) / 2;
+}
+
 if (globalThis.Hooks) {
   Hooks.once("init", () => {
     CONFIG.queries[PLAYER_QUERY] = handlePlayerNoteQuery;
@@ -1570,28 +1596,28 @@ if (globalThis.Hooks) {
     });
   });
 
-  // Only one discoverable Map Notes+ button in Token Controls. The three
-  // actions live in its hover/click submenu, without deactivating the Token
-  // layer (which would lose the user's selected tokens).
+  // Only one discoverable Map Notes+ button in Token Controls. Insert it
+  // after five visible native/custom tools, rather than forcing it to the top.
+  // The three actions stay in the hover/click menu and preserve Token selection.
   Hooks.on("getSceneControlButtons", controls => {
     if (!game.user || !controls?.tokens?.tools) return;
     const tools = controls.tokens.tools;
-    const first = Math.min(0, ...Object.values(tools).map(t => Number(t.order)).filter(Number.isFinite)) - 1;
+    const menuOrder = mapNotesMenuOrder(tools);
     // Preserve legacy tool identifiers for saved macros/third-party callers,
     // but hide the old duplicated icons from the actual toolbar.
     tools.stlQuickMapNote = {
       name:"stlQuickMapNote",title:"Place Map Note (legacy)",
-      icon:"fa-solid fa-location-dot",order:first+1,button:true,visible:false,
+      icon:"fa-solid fa-location-dot",order:menuOrder+1,button:true,visible:false,
       onChange:() => armPlacement()
     };
     tools.stlFindQuickNote = {
       name:"stlFindQuickNote",title:"Manage Map Note (legacy)",
-      icon:"fa-solid fa-list",order:first+2,button:true,visible:false,
+      icon:"fa-solid fa-list",order:menuOrder+2,button:true,visible:false,
       onChange:() => {void showFindQuickNotes("manage").catch(reportMapMenuError);}
     };
     tools[MAP_MENU_TOOL] = {
       name:MAP_MENU_TOOL,title:"Map Notes+",
-      icon:"fa-solid fa-map-location-dot",order:first,button:true,visible:true,
+      icon:"fa-solid fa-map-location-dot",order:menuOrder,button:true,visible:true,
       onChange:event => {void openMapNotesMenuFromToolEvent(event).catch(reportMapMenuError);}
     };
   });

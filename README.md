@@ -23,7 +23,7 @@ A **GM must be online** when a player creates a map note. Players use the Quick 
 
 ## Find and manage notes (players and GMs)
 
-Under **Token Controls**, hover over **Map Notes+** to reveal three choices. Click the same icon to open the menu without hovering (useful on touchscreens and for keyboard navigation).
+**Map Notes+** now sits around the sixth position under **Token Controls**, after the first five visible tools; the exact position can vary with other enabled modules. Hover over it to reveal three choices. Click the same icon to open the menu without hovering (useful on touchscreens and for keyboard navigation).
 
 - **Place Map Note** starts the current map-click and Journal/Page workflow.
 - **Find Map Note** opens a searchable list of accessible notes on this Scene. **Pan** centers the view on a pin without moving tokens or changing notes.
@@ -52,9 +52,9 @@ For manual ZIP replacement, stop Foundry and install the complete folder at `Dat
 
 ## Beta limitations
 
-The module has passed automated/mock tests, **not** the full Foundry v14 multiplayer privacy test. Before using private player notes for sensitive information, test with a GM and two players: Page ownership, private pin/title visibility, adding a note to an existing Scene Journal, and refresh/reconnect. Earlier player permission errors have occurred; automated checks cannot establish the live behavior. The hover menu's toolbar restoration fix in v0.1.13, Find and Manage windows, GM-only Delete Pin confirmation, and direct token movement still need a live v14 toolbar/canvas/permission test.
+The module has passed automated/mock tests, **not** the full Foundry v14 multiplayer privacy test. Before using private player notes for sensitive information, test with a GM and two players: Page ownership, private pin/title visibility, adding a note to an existing Scene Journal, and refresh/reconnect. Earlier player permission errors have occurred; automated checks cannot establish the live behavior. The hover menu's toolbar restoration fix, Find and Manage windows, GM-only Delete Pin confirmation, and direct token movement still need a live v14 toolbar/canvas/permission test.
 
-Updating this release does **not** migrate or alter existing Journals, Pages, pins, IDs, flags, or saved tutorial preferences. The existing internal module ID, note data, and permissions remain unchanged. Restore the [v0.1.12 package](https://github.com/rebsiot/quick-map-notes/releases/tag/v0.1.12) to roll back the module code. To undo world edits made during play, restore a matching world backup separately.
+Updating this release does **not** migrate or alter existing Journals, Pages, pins, IDs, flags, or saved tutorial preferences. The existing internal module ID, note data, and permissions remain unchanged. Restore the [v0.1.13 package](https://github.com/rebsiot/quick-map-notes/releases/tag/v0.1.13) to roll back the module code. To undo world edits made during play, restore a matching world backup separately.
 
 ## More information
 
